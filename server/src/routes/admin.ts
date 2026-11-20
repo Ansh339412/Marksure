@@ -49,33 +49,81 @@ adminRouter.post(
   async (req, res) => {
     try {
       const { roll_number, full_name, department, semester } = req.body || {};
-      if (!roll_number || !full_name || !department) {
+      const cleanRoll = String(roll_number || '').trim().toUpperCase();
+      const cleanName = String(full_name || '').trim();
+      const cleanDept = String(department || '').trim();
+
+      if (!cleanRoll || cleanRoll.length < 4) {
         res.status(400).json({
-          error: 'roll_number, full_name, and department are required.',
+          error: 'Registration number (roll_number) is required and must be at least 4 characters.',
+          code: 'INVALID_ROLL_NUMBER',
         });
         return;
       }
 
-      const semNum = Number(semester || 5);
+      if (!cleanName || cleanName.length < 2) {
+        res.status(400).json({
+          error: 'Student full name is required and must be at least 2 characters.',
+          code: 'INVALID_FULL_NAME',
+        });
+        return;
+      }
+
+      if (!cleanDept) {
+        res.status(400).json({
+          error: 'Academic department is required.',
+          code: 'INVALID_DEPARTMENT',
+        });
+        return;
+      }
+
+      const semNum = Number(semester ?? 1);
       if (!Number.isInteger(semNum) || semNum < 1 || semNum > 12) {
-        res.status(400).json({ error: 'semester must be an integer between 1 and 12.' });
+        res.status(400).json({
+          error: 'Semester must be an integer between 1 and 12.',
+          code: 'INVALID_SEMESTER',
+        });
         return;
       }
 
       const supabase = getSupabaseAdmin();
+
+      // Check if student with same roll_number already exists (HTTP 409 Conflict)
+      const { data: existingStudent } = await supabase
+        .from('students')
+        .select('id, roll_number, full_name')
+        .eq('roll_number', cleanRoll)
+        .maybeSingle();
+
+      if (existingStudent) {
+        res.status(409).json({
+          error: `A student with registration number "${cleanRoll}" is already registered (${existingStudent.full_name}).`,
+          code: 'DUPLICATE_ROLL_NUMBER',
+        });
+        return;
+      }
+
       const { data: student, error } = await supabase
         .from('students')
         .insert({
-          roll_number: String(roll_number).trim().toUpperCase(),
-          full_name: String(full_name).trim(),
-          department: String(department).trim(),
+          roll_number: cleanRoll,
+          full_name: cleanName,
+          department: cleanDept,
           semester: semNum,
+          profile_id: null,
         })
         .select('*')
         .single();
 
       if (error) {
-        res.status(400).json({ error: error.message });
+        if (error.code === '23505' || error.message.includes('unique constraint')) {
+          res.status(409).json({
+            error: `A student with registration number "${cleanRoll}" is already registered.`,
+            code: 'DUPLICATE_ROLL_NUMBER',
+          });
+          return;
+        }
+        res.status(400).json({ error: error.message, code: 'STUDENT_INSERT_FAILED' });
         return;
       }
 

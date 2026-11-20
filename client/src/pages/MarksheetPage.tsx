@@ -11,6 +11,10 @@ import {
   Clock,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import {
+  buildPublicVerifyUrl,
+  buildRelativeVerifyPath,
+} from '../lib/verificationUrl';
 import { PendingApprovalBadge, StatusBadge } from '../components/StatusBadge';
 import {
   calculateAcademicSummary,
@@ -77,8 +81,15 @@ export function MarksheetPage({ embeddedResultId }: { embeddedResultId?: string 
     );
   }
 
-  const verifyPath = `/verify/${report.result_id}?v=${report.current_version}&leaf=${report.stored_leaf_hash}`;
-  const fullQrUrl = `${window.location.origin}${verifyPath}`;
+  const verifyPath = buildRelativeVerifyPath(report.result_id, {
+    v: report.current_version,
+    leaf: report.stored_leaf_hash,
+  });
+  // Point QR code strictly to public canonical production verifier URL
+  const fullQrUrl = buildPublicVerifyUrl(report.result_id, {
+    v: report.current_version,
+    leaf: report.stored_leaf_hash,
+  });
   const summary = calculateAcademicSummary(report.field_diffs || []);
   const pendingCorrections = report.pending_corrections || [];
 

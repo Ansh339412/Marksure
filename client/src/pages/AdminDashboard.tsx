@@ -12,6 +12,7 @@ import {
   Filter,
   History,
   KeyRound,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -80,6 +81,7 @@ export function AdminDashboard() {
   const [showPublishPanel, setShowPublishPanel] = useState(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [confirmReinitOpen, setConfirmReinitOpen] = useState(false);
+  const [activeRegistryTab, setActiveRegistryTab] = useState<'RESULTS' | 'STUDENTS'>('RESULTS');
 
   // Publish Batch form state
   const [batchName, setBatchName] = useState(
@@ -99,35 +101,59 @@ export function AdminDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [stuRes, resRes, batchRes, ledgerRes] = await Promise.all([
+      const [stuRes, resRes, batchRes, ledgerRes] = await Promise.allSettled([
         apiFetch<{ students: StudentRecord[] }>('/api/admin/students'),
         apiFetch<{ results: any[] }>('/api/admin/results'),
         apiFetch<{ batches: any[] }>('/api/admin/batches'),
         apiFetch<{ events: any[] }>('/api/audit/ledger'),
       ]);
 
-      const sortedStudents = (stuRes.students || []).sort((a, b) =>
-        a.roll_number.localeCompare(b.roll_number)
-      );
-      const sortedResults = (resRes.results || []).sort((a, b) =>
-        a.student.roll_number.localeCompare(b.student.roll_number)
-      );
+      if (stuRes.status === 'fulfilled') {
+        const sortedStudents = (stuRes.value.students || []).sort((a, b) =>
+          a.roll_number.localeCompare(b.roll_number)
+        );
+        setStudents(sortedStudents);
 
-      setStudents(sortedStudents);
-      setResults(sortedResults);
-      setBatches(batchRes.batches || []);
-      setRecentEvents((ledgerRes.events || []).slice(0, 6));
-
-      const initMarks: Record<string, SubjectEntry[]> = {};
-      for (const s of sortedStudents) {
-        initMarks[s.id] = SEMESTER_1_COURSES.map((c) => ({
-          code: c.code,
-          name: c.name,
-          marks: 80,
-          max_marks: c.max_marks,
-        }));
+        setMarksByStudent((prev) => {
+          const initMarks: Record<string, SubjectEntry[]> = { ...prev };
+          for (const s of sortedStudents) {
+            if (!initMarks[s.id]) {
+              initMarks[s.id] = SEMESTER_1_COURSES.map((c) => ({
+                code: c.code,
+                name: c.name,
+                marks: 80,
+                max_marks: c.max_marks,
+              }));
+            }
+          }
+          return initMarks;
+        });
       }
-      setMarksByStudent((prev) => (Object.keys(prev).length > 0 ? prev : initMarks));
+
+      if (resRes.status === 'fulfilled') {
+        const sortedResults = (resRes.value.results || []).sort((a, b) =>
+          a.student.roll_number.localeCompare(b.student.roll_number)
+        );
+        setResults(sortedResults);
+      }
+
+      if (batchRes.status === 'fulfilled') {
+        setBatches(batchRes.value.batches || []);
+      }
+
+      if (ledgerRes.status === 'fulfilled') {
+        setRecentEvents((ledgerRes.value.events || []).slice(0, 6));
+      }
+
+      // If all four requests failed, surface the error
+      if (
+        stuRes.status === 'rejected' &&
+        resRes.status === 'rejected' &&
+        batchRes.status === 'rejected' &&
+        ledgerRes.status === 'rejected'
+      ) {
+        setError(stuRes.reason);
+      }
     } catch (err) {
       setError(err);
     } finally {
@@ -156,6 +182,18 @@ export function AdminDashboard() {
       return r.verification_status === statusFilter;
     });
   }, [results, searchQuery, statusFilter]);
+
+  const filteredStudents = useMemo(() => {
+    return students.filter((s) => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        s.roll_number.toLowerCase().includes(q) ||
+        (s.full_name || '').toLowerCase().includes(q) ||
+        (s.department || '').toLowerCase().includes(q)
+      );
+    });
+  }, [students, searchQuery]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -251,14 +289,14 @@ export function AdminDashboard() {
       setStudentFormError('Registration number must be at least 4 characters.');
       return;
     }
-    if (cleanName.length < 3) {
-      setStudentFormError('Student full name must be at least 3 characters.');
+    if (cleanName.length < 2) {
+      setStudentFormError('Student full name must be at least 2 characters.');
       return;
     }
 
     setBusy(true);
     try {
-      await apiFetch('/api/admin/students', {
+      const res = await apiFetch<{ student: StudentRecord }>('/api/admin/students', {
         method: 'POST',
         body: JSON.stringify({
           roll_number: cleanRoll,
@@ -267,18 +305,34 @@ export function AdminDashboard() {
           semester: newSem,
         }),
       });
+
+      const newStudent = res.student;
+      setStudents((prev) =>
+        [...prev, newStudent].sort((a, b) => a.roll_number.localeCompare(b.roll_number))
+      );
+      setMarksByStudent((prev) => ({
+        ...prev,
+        [newStudent.id]: SEMESTER_1_COURSES.map((c) => ({
+          code: c.code,
+          name: c.name,
+          marks: 80,
+          max_marks: c.max_marks,
+        })),
+      }));
+
       setNewRoll('');
       setNewName('');
       setShowAddStudentModal(false);
+      setActiveRegistryTab('STUDENTS');
       notify({
         type: 'success',
         title: 'Student Registered',
         message: `Added ${cleanRoll} (${cleanName}) to the academic directory.`,
       });
       await loadAll();
-    } catch (err) {
+    } catch (err: any) {
       setStudentFormError(
-        err instanceof Error ? err.message : 'Unable to register student.'
+        err?.message || 'Unable to register student. Please check the values and retry.'
       );
     } finally {
       setBusy(false);
@@ -569,13 +623,43 @@ export function AdminDashboard() {
 
       {/* MAIN FOCUS: Published Results Registry Table */}
       <div className="bg-white border border-stone-300 rounded overflow-hidden">
+        {/* Top Tab Bar Switching between Published Results & Enrolled Students */}
+        <div className="flex border-b border-stone-300 bg-stone-100/70 px-4 pt-2.5 gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveRegistryTab('RESULTS')}
+            className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition cursor-pointer ${
+              activeRegistryTab === 'RESULTS'
+                ? 'border-[#7F1D1D] text-[#7F1D1D] bg-white rounded-t'
+                : 'border-transparent text-stone-600 hover:text-zinc-900'
+            }`}
+          >
+            Published Results Registry ({results.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveRegistryTab('STUDENTS')}
+            className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition cursor-pointer ${
+              activeRegistryTab === 'STUDENTS'
+                ? 'border-[#7F1D1D] text-[#7F1D1D] bg-white rounded-t'
+                : 'border-transparent text-stone-600 hover:text-zinc-900'
+            }`}
+          >
+            Enrolled Student Directory ({students.length})
+          </button>
+        </div>
+
         <div className="p-4 border-b border-stone-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-stone-50/70">
           <div>
             <h2 className="text-sm font-bold text-zinc-900 uppercase tracking-wider">
-              Published Examination Results & Live Cryptographic Verification ({filteredResults.length} of {results.length})
+              {activeRegistryTab === 'RESULTS'
+                ? `Published Examination Results & Live Cryptographic Verification (${filteredResults.length} of ${results.length})`
+                : `Enrolled Student Records & Admission Directory (${filteredStudents.length} of ${students.length})`}
             </h2>
             <p className="text-xs text-stone-500 mt-0.5">
-              Every record is verified live against its Merkle inclusion proof and Ed25519 institutional manifest signature.
+              {activeRegistryTab === 'RESULTS'
+                ? 'Every record is verified live against its Merkle inclusion proof and Ed25519 institutional manifest signature.'
+                : 'Official roster of enrolled students in the database, including records awaiting batch publication and unlinked profiles.'}
             </p>
           </div>
 
@@ -585,46 +669,153 @@ export function AdminDashboard() {
               <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-2" />
               <input
                 type="text"
-                aria-label="Search student records"
+                aria-label="Search records"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search Registration No or Name..."
+                placeholder="Search Roll No or Name..."
                 className="pl-8 pr-3 py-1 text-xs rounded border border-stone-300 bg-white focus:outline-none focus:border-zinc-900 w-56"
               />
             </div>
 
-            {/* Filter Pills */}
-            <div className="flex items-center gap-1 text-[11px] font-semibold">
-              <Filter className="w-3.5 h-3.5 text-stone-400 mr-1" />
-              {(
-                [
-                  { id: 'ALL', label: 'All' },
-                  { id: 'VERIFIED', label: 'Verified' },
-                  { id: 'PENDING_CORRECTION', label: 'Pending (1/2)' },
-                  { id: 'CORRECTED', label: 'Corrected' },
-                  { id: 'TAMPERED', label: 'Tampered' },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={`px-2.5 py-1 rounded border transition cursor-pointer ${
-                    statusFilter === tab.id
-                      ? 'bg-zinc-900 text-white border-zinc-900'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            {/* Filter Pills (Results view only) */}
+            {activeRegistryTab === 'RESULTS' && (
+              <div className="flex items-center gap-1 text-[11px] font-semibold">
+                <Filter className="w-3.5 h-3.5 text-stone-400 mr-1" />
+                {(
+                  [
+                    { id: 'ALL', label: 'All' },
+                    { id: 'VERIFIED', label: 'Verified' },
+                    { id: 'PENDING_CORRECTION', label: 'Pending (1/2)' },
+                    { id: 'CORRECTED', label: 'Corrected' },
+                    { id: 'TAMPERED', label: 'Tampered' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setStatusFilter(tab.id)}
+                    className={`px-2.5 py-1 rounded border transition cursor-pointer ${
+                      statusFilter === tab.id
+                        ? 'bg-zinc-900 text-white border-zinc-900'
+                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {loading ? (
           <div className="p-4">
             <SkeletonTable rows={6} />
+          </div>
+        ) : activeRegistryTab === 'STUDENTS' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-stone-200 bg-stone-100/70 text-[11px] font-bold uppercase tracking-wider text-stone-600">
+                  <th className="py-2.5 px-3.5">Registration No</th>
+                  <th className="py-2.5 px-3.5">Student Full Name</th>
+                  <th className="py-2.5 px-3.5">Department &amp; Semester</th>
+                  <th className="py-2.5 px-3.5">Auth Profile Link</th>
+                  <th className="py-2.5 px-3.5">Examination Status</th>
+                  <th className="py-2.5 px-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-200 bg-white">
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-stone-500 text-sm">
+                      No enrolled students found matching &ldquo;{searchQuery}&rdquo;.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((stu) => {
+                    const publishedRes = results.find(
+                      (r) => r.student?.roll_number === stu.roll_number
+                    );
+                    const hasProfile = Boolean((stu as any).profile_id);
+
+                    return (
+                      <tr key={stu.id} className="hover:bg-stone-50 transition">
+                        <td className="py-3 px-3.5 font-mono font-bold text-zinc-900">
+                          {stu.roll_number}
+                        </td>
+                        <td className="py-3 px-3.5 font-bold text-zinc-900">
+                          {stu.full_name}
+                        </td>
+                        <td className="py-3 px-3.5 text-stone-600 text-xs">
+                          {stu.department} • Sem {stu.semester}
+                        </td>
+                        <td className="py-3 px-3.5">
+                          {hasProfile ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 font-semibold text-xs">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>Linked User Profile</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-300 text-xs">
+                              <span>Enrolled Record (Unlinked)</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3.5">
+                          {publishedRes ? (
+                            <div className="flex items-center gap-1.5">
+                              <StatusBadge
+                                status={publishedRes.verification_status as VerificationStatus}
+                              />
+                              <span className="font-mono text-xs text-stone-500">
+                                v{publishedRes.current_version}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 text-xs font-semibold">
+                              Awaiting Batch Publication
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                          {publishedRes ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <Link
+                                to={`/marksheet/${publishedRes.result_id}`}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white hover:bg-stone-100 text-zinc-900 border border-stone-300 text-xs font-semibold"
+                              >
+                                <FileText className="w-3 h-3" />
+                                <span>Transcript</span>
+                              </Link>
+                              <Link
+                                to={`/verify/${publishedRes.result_id}?v=${publishedRes.current_version}&leaf=${publishedRes.stored_leaf_hash}`}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold"
+                              >
+                                <QrCode className="w-3 h-3" />
+                                <span>Verify</span>
+                              </Link>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowPublishPanel(true);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#7F1D1D] hover:bg-[#651717] text-white text-xs font-bold transition cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Publish Marks</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         ) : filteredResults.length === 0 ? (
           <div className="p-4">

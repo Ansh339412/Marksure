@@ -357,3 +357,77 @@ correctionsRouter.post(
     }
   }
 );
+
+// Reject a pending correction request (Admin or Approver)
+correctionsRouter.post(
+  '/:id/reject',
+  requireAuth,
+  requireRole('admin', 'approver'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason = 'Rejected by examination scrutiny authority.' } = req.body || {};
+      const cleanReason = String(reason).trim();
+
+      const supabase = getSupabaseAdmin();
+      const { data: cr, error: crErr } = await supabase
+        .from('correction_requests')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (crErr || !cr) {
+        res.status(404).json({ error: 'Correction request not found.' });
+        return;
+      }
+
+      if (cr.status !== 'pending') {
+        res.status(400).json({
+          error: `Correction request cannot be rejected because it is already ${cr.status}.`,
+        });
+        return;
+      }
+
+      const { data: updated, error: updateErr } = await supabase
+        .from('correction_requests')
+        .update({
+          status: 'rejected',
+          finalized_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (updateErr) {
+        throw new Error(`Failed to update correction status: ${updateErr.message}`);
+      }
+
+      await appendLedgerEvent({
+        eventType: 'CORRECTION_REJECTED',
+        entityId: cr.id,
+        actorId: req.user!.id,
+        payload: {
+          correction_request_id: cr.id,
+          result_id: cr.result_id,
+          subject_code: cr.subject_code,
+          rejected_by_id: req.user!.id,
+          rejected_by_name: req.user!.full_name,
+          rejected_by_role: req.user!.role,
+          rejection_reason: cleanReason,
+        },
+      });
+
+      res.json({
+        rejected: true,
+        status: 'rejected',
+        correction_request: updated,
+        message: `Correction request for ${cr.subject_code} has been officially rejected and archived to the audit ledger.`,
+      });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : 'Failed to reject correction request.',
+      });
+    }
+  }
+);

@@ -22,6 +22,7 @@ import { verifySingleResultFromDb } from '../services/verificationService.js';
 export const INSTITUTIONAL_STUDENTS: {
   id: string;
   profileKey: string | null;
+  email: string;
   roll_number: string;
   full_name: string;
   department: string;
@@ -31,6 +32,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000201',
     profileKey: 'demo-student-1',
+    email: 'harnoor.singh@student.marksure.edu',
     roll_number: 'REG-2026-CSE-001',
     full_name: 'Harnoor Singh',
     department: 'Computer Science and Engineering',
@@ -47,6 +49,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000202',
     profileKey: null,
+    email: 'simran.kaur@student.marksure.edu',
     roll_number: 'REG-2026-CSE-002',
     full_name: 'Simran Kaur',
     department: 'Computer Science and Engineering',
@@ -63,6 +66,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000203',
     profileKey: null,
+    email: 'arshdeep.gill@student.marksure.edu',
     roll_number: 'REG-2026-CSE-003',
     full_name: 'Arshdeep Gill',
     department: 'Computer Science and Engineering',
@@ -79,6 +83,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000204',
     profileKey: null,
+    email: 'riya.sharma@student.marksure.edu',
     roll_number: 'REG-2026-CSE-004',
     full_name: 'Riya Sharma',
     department: 'Computer Science and Engineering',
@@ -95,6 +100,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000205',
     profileKey: null,
+    email: 'kabir.mehta@student.marksure.edu',
     roll_number: 'REG-2026-CSE-005',
     full_name: 'Kabir Mehta',
     department: 'Computer Science and Engineering',
@@ -111,6 +117,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000206',
     profileKey: null,
+    email: 'navneet.kaur@student.marksure.edu',
     roll_number: 'REG-2026-CSE-006',
     full_name: 'Navneet Kaur',
     department: 'Computer Science and Engineering',
@@ -127,6 +134,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000207',
     profileKey: null,
+    email: 'jasleen.kaur@student.marksure.edu',
     roll_number: 'REG-2026-CSE-007',
     full_name: 'Jasleen Kaur',
     department: 'Computer Science and Engineering',
@@ -143,6 +151,7 @@ export const INSTITUTIONAL_STUDENTS: {
   {
     id: '00000000-0000-0000-0000-000000000208',
     profileKey: null,
+    email: 'manav.verma@student.marksure.edu',
     roll_number: 'REG-2026-CSE-008',
     full_name: 'Manav Verma',
     department: 'Computer Science and Engineering',
@@ -246,7 +255,43 @@ export async function ensureDemoDataSeeded(options: { forceReset?: boolean } = {
   }
 
   for (const stu of INSTITUTIONAL_STUDENTS) {
-    const profileId = stu.profileKey ? DEMO_PROFILES[stu.profileKey]?.id || null : null;
+    // Create or sync a Supabase Auth account + profile for every student
+    let studentAuthId = existingUsersByEmail.get(stu.email.toLowerCase());
+    if (!studentAuthId) {
+      const { data: createdStuAuth } = await supabase.auth.admin.createUser({
+        email: stu.email,
+        password: 'Password123!',
+        email_confirm: true,
+        user_metadata: {
+          full_name: stu.full_name,
+          role: 'student',
+        },
+      });
+      if (createdStuAuth?.user?.id) {
+        studentAuthId = createdStuAuth.user.id;
+        existingUsersByEmail.set(stu.email.toLowerCase(), studentAuthId);
+      }
+    }
+
+    if (studentAuthId) {
+      if (stu.profileKey && DEMO_PROFILES[stu.profileKey]) {
+        DEMO_PROFILES[stu.profileKey].id = studentAuthId;
+      }
+      await supabase.from('profiles').upsert(
+        {
+          id: studentAuthId,
+          email: stu.email,
+          full_name: stu.full_name,
+          role: 'student',
+          public_key_hex: null,
+        },
+        { onConflict: 'id' }
+      );
+    }
+
+    const profileId =
+      studentAuthId || (stu.profileKey ? DEMO_PROFILES[stu.profileKey]?.id || null : null);
+
     await supabase.from('students').upsert(
       {
         id: stu.id,

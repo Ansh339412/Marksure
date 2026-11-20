@@ -80,15 +80,27 @@ export function CorrectionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [resData, corrData] = await Promise.all([
+      const [resSettled, corrSettled] = await Promise.allSettled([
         apiFetch<{ results: any[] }>('/api/admin/results'),
         apiFetch<{ requests: any[] }>('/api/corrections'),
       ]);
-      const sortedResults = (resData.results || []).sort((a, b) =>
-        a.student.roll_number.localeCompare(b.student.roll_number)
-      );
-      setResults(sortedResults);
-      setRequests(corrData.requests || []);
+
+      let sortedResults: any[] = [];
+      if (resSettled.status === 'fulfilled') {
+        sortedResults = (resSettled.value.results || []).sort((a, b) =>
+          a.student.roll_number.localeCompare(b.student.roll_number)
+        );
+        setResults(sortedResults);
+      }
+
+      if (corrSettled.status === 'fulfilled') {
+        setRequests(corrSettled.value.requests || []);
+      }
+
+      if (resSettled.status === 'rejected' && corrSettled.status === 'rejected') {
+        setError(resSettled.reason);
+      }
+
       if (queryResultId && sortedResults.some((r) => r.result_id === queryResultId)) {
         setSelectedResultId(queryResultId);
       } else if (!selectedResultId && sortedResults.length > 0) {
@@ -241,9 +253,40 @@ export function CorrectionsPage() {
     }
   }
 
+  async function handleRejectRequest(correctionId: string, subjectCode: string) {
+    if (
+      !window.confirm(
+        `Are you sure you want to reject and cancel the pending correction for ${subjectCode}? A CORRECTION_REJECTED event will be committed to the hash-chained audit ledger.`
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      await apiFetch(`/api/corrections/${correctionId}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: `Rejected by ${user?.full_name || 'Authority'} (${user?.role_code || 'EXAM_BOARD'})`,
+        }),
+      });
+      notify({
+        type: 'info',
+        title: 'Correction Rejected',
+        message: `Correction request for ${subjectCode} has been archived to the audit ledger.`,
+      });
+      await loadData();
+    } catch (err: any) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const selectedResultObj = results.find((r) => r.result_id === selectedResultId);
   const pendingRequests = requests.filter((r) => r.status === 'pending');
   const finalizedRequests = requests.filter((r) => r.status === 'finalized');
+  const rejectedRequests = requests.filter((r) => r.status === 'rejected');
 
   return (
     <PageTransition className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 space-y-6">
@@ -571,17 +614,30 @@ export function CorrectionsPage() {
 
                       {/* Action Footer */}
                       <div className="pt-3 border-t border-stone-200 flex flex-wrap items-center justify-between gap-2">
-                        <Button
-                          type="button"
-                          variant="danger"
-                          disabled={busy}
-                          onClick={() => handleAttemptSingleApprovalFinalize(cr.id)}
-                        >
-                          <ShieldAlert className="w-3.5 h-3.5" />
-                          <span>
-                            Verify Single-Approval Lock ({approvals.length}/2 Approvals)
-                          </span>
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="danger"
+                            disabled={busy}
+                            onClick={() => handleAttemptSingleApprovalFinalize(cr.id)}
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>
+                              Verify Single-Approval Lock ({approvals.length}/2 Approvals)
+                            </span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={busy || (user?.role !== 'admin' && user?.role !== 'approver')}
+                            onClick={() => handleRejectRequest(cr.id, cr.subject_code)}
+                            className="text-red-700 hover:bg-red-50 hover:border-red-300"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>Reject &amp; Archive</span>
+                          </Button>
+                        </div>
 
                         <Button
                           type="button"
@@ -687,6 +743,38 @@ export function CorrectionsPage() {
               })
             )}
           </div>
+
+          {/* Rejected Correction History */}
+          {rejectedRequests.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-red-900 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-red-700" />
+                <span>Rejected / Archived Requests ({rejectedRequests.length})</span>
+              </h2>
+
+              {rejectedRequests.map((cr) => {
+                const stu = cr.results?.students;
+                return (
+                  <div
+                    key={cr.id}
+                    className="bg-red-50/50 border border-red-200 rounded p-4 space-y-2 text-xs"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-bold text-zinc-900">
+                        <span className="font-mono">{stu?.roll_number}</span> — {stu?.full_name} ({cr.subject_code}: {cr.old_marks} → {cr.new_marks})
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-red-100 text-red-900 font-bold border border-red-300">
+                        Rejected &amp; Archived
+                      </span>
+                    </div>
+                    <p className="text-stone-600 bg-white p-2.5 rounded border border-stone-200">
+                      <strong>Audit Trail:</strong> Correction request was formally rejected and logged in the immutable SHA-256 audit ledger.
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Right Column (4 cols): Initiate Correction Request Form (Admin) */}

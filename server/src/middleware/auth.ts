@@ -67,7 +67,7 @@ export const DEMO_PROFILES: Record<string, AuthenticatedUser> = {
   },
   'demo-student-1': {
     id: '00000000-0000-0000-0000-000000000011',
-    email: 'aarav.patel@student.marksure.edu',
+    email: 'harnoor.singh@student.marksure.edu',
     full_name: 'Harnoor Singh',
     designation: 'B.Tech Computer Science and Engineering',
     department: 'School of Computer Science and Engineering',

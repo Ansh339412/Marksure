@@ -18,6 +18,10 @@ import { PageTransition } from '../components/ui/DesignSystem';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 import { INSTITUTION_CONTEXT } from '../lib/academicPolicy';
+import {
+  CANONICAL_PUBLIC_VERIFY_HOST,
+  buildPublicVerifyUrl,
+} from '../lib/verificationUrl';
 
 type PreviewStateKey = 'verified' | 'corrected' | 'tampered';
 
@@ -442,7 +446,14 @@ export function HomePage() {
 
                   <div className="sm:col-span-3 flex flex-col items-center justify-center bg-white p-2 rounded-md text-zinc-900">
                     <QRCodeSVG
-                      value={`${window.location.origin}${liveVerifyUrl}`}
+                      value={
+                        matchingLiveRecord
+                          ? buildPublicVerifyUrl(matchingLiveRecord.result_id, {
+                              v: matchingLiveRecord.current_version,
+                              leaf: matchingLiveRecord.latest_leaf_hash,
+                            })
+                          : `${CANONICAL_PUBLIC_VERIFY_HOST}/verify`
+                      }
                       size={76}
                       level="M"
                     />

@@ -40,6 +40,10 @@ const EVENT_TYPE_LABELS: Record<string, { title: string; badgeClass: string }> =
     title: 'Dual-Approval Correction Finalized & Published',
     badgeClass: 'bg-sky-50 text-sky-900 border-sky-300',
   },
+  CORRECTION_REJECTED: {
+    title: 'Correction Request Rejected & Archived',
+    badgeClass: 'bg-red-50 text-red-900 border-red-300',
+  },
 };
 
 export function AuditDashboardPage() {
@@ -55,15 +59,26 @@ export function AuditDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [scanRes, ledgerRes] = await Promise.all([
+      const [scanSettled, ledgerSettled] = await Promise.allSettled([
         apiFetch<any>('/api/audit/integrity-scan'),
         apiFetch<any>('/api/audit/ledger'),
       ]);
-      scanRes.records = (scanRes.records || []).sort((a: any, b: any) =>
-        a.student.roll_number.localeCompare(b.student.roll_number)
-      );
-      setScanData(scanRes);
-      setLedgerData(ledgerRes);
+
+      if (scanSettled.status === 'fulfilled') {
+        const scanRes = scanSettled.value;
+        scanRes.records = (scanRes.records || []).sort((a: any, b: any) =>
+          a.student.roll_number.localeCompare(b.student.roll_number)
+        );
+        setScanData(scanRes);
+      }
+
+      if (ledgerSettled.status === 'fulfilled') {
+        setLedgerData(ledgerSettled.value);
+      }
+
+      if (scanSettled.status === 'rejected' && ledgerSettled.status === 'rejected') {
+        setError(scanSettled.reason);
+      }
     } catch (err) {
       setError(err);
     } finally {
@@ -107,6 +122,8 @@ export function AuditDashboardPage() {
         ).slice(0, 20)}...)`;
       case 'CORRECTION_FINALIZED':
         return `Student ${p.roll_number || ''} • Course ${p.subject_code}: Finalized v${p.from_version} → v${p.finalized_version} (${p.old_marks} → ${p.new_marks}) after 2 distinct approvals.`;
+      case 'CORRECTION_REJECTED':
+        return `Correction for ${p.subject_code} rejected by ${p.rejected_by_name || 'Authority'} (${p.rejected_by_role || 'reviewer'}). Reason: "${p.rejection_reason || 'Rejected'}"`;
       default:
         return JSON.stringify(p);
     }
