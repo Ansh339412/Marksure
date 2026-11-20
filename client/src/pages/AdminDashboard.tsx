@@ -48,6 +48,17 @@ interface StudentRecord {
   full_name: string;
   department: string;
   semester: number;
+  profile_id?: string | null;
+}
+
+interface DashboardSummary {
+  enrolled_students: number;
+  pending_corrections: number;
+  integrity_alerts: number;
+  audit_ledger_events: number;
+  published_batches: number;
+  ledger_chain_valid: boolean;
+  integrity_status: 'VERIFIED' | 'FAILED' | 'UNAVAILABLE';
 }
 
 interface SubjectEntry {
@@ -65,6 +76,8 @@ export function AdminDashboard() {
   const [results, setResults] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
+  const [summaryError, setSummaryError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -97,37 +110,61 @@ export function AdminDashboard() {
   const [newSem, setNewSem] = useState(1);
   const [studentFormError, setStudentFormError] = useState<string | null>(null);
 
+  function parseStudentListResponse(payload: unknown): StudentRecord[] {
+    if (Array.isArray(payload)) return payload as StudentRecord[];
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Student registry returned an invalid response.');
+    }
+
+    const response = payload as Record<string, unknown>;
+    for (const key of ['students', 'records', 'data']) {
+      if (Array.isArray(response[key])) return response[key] as StudentRecord[];
+    }
+    throw new Error('Student registry response did not contain a student list.');
+  }
+
+  async function fetchStudents(): Promise<StudentRecord[]> {
+    const response = await apiFetch<unknown>('/api/admin/students');
+    return parseStudentListResponse(response);
+  }
+
+  function applyStudents(nextStudents: StudentRecord[]) {
+    const sortedStudents = [...nextStudents].sort((a, b) =>
+      a.roll_number.localeCompare(b.roll_number)
+    );
+    setStudents(sortedStudents);
+
+    setMarksByStudent((prev) => {
+      const initMarks: Record<string, SubjectEntry[]> = { ...prev };
+      for (const s of sortedStudents) {
+        if (!initMarks[s.id]) {
+          initMarks[s.id] = SEMESTER_1_COURSES.map((c) => ({
+            code: c.code,
+            name: c.name,
+            marks: 80,
+            max_marks: c.max_marks,
+          }));
+        }
+      }
+      return initMarks;
+    });
+  }
+
   async function loadAll() {
     setLoading(true);
     setError(null);
+    setSummaryError(null);
     try {
-      const [stuRes, resRes, batchRes, ledgerRes] = await Promise.allSettled([
-        apiFetch<{ students: StudentRecord[] }>('/api/admin/students'),
+      const [stuRes, resRes, batchRes, ledgerRes, summaryRes] = await Promise.allSettled([
+        fetchStudents(),
         apiFetch<{ results: any[] }>('/api/admin/results'),
         apiFetch<{ batches: any[] }>('/api/admin/batches'),
         apiFetch<{ events: any[] }>('/api/audit/ledger'),
+        apiFetch<DashboardSummary>('/api/admin/summary'),
       ]);
 
       if (stuRes.status === 'fulfilled') {
-        const sortedStudents = (stuRes.value.students || []).sort((a, b) =>
-          a.roll_number.localeCompare(b.roll_number)
-        );
-        setStudents(sortedStudents);
-
-        setMarksByStudent((prev) => {
-          const initMarks: Record<string, SubjectEntry[]> = { ...prev };
-          for (const s of sortedStudents) {
-            if (!initMarks[s.id]) {
-              initMarks[s.id] = SEMESTER_1_COURSES.map((c) => ({
-                code: c.code,
-                name: c.name,
-                marks: 80,
-                max_marks: c.max_marks,
-              }));
-            }
-          }
-          return initMarks;
-        });
+        applyStudents(stuRes.value);
       }
 
       if (resRes.status === 'fulfilled') {
@@ -144,13 +181,24 @@ export function AdminDashboard() {
       if (ledgerRes.status === 'fulfilled') {
         setRecentEvents((ledgerRes.value.events || []).slice(0, 6));
       }
+      if (summaryRes.status === 'fulfilled') {
+        setDashboardSummary(summaryRes.value);
+      } else {
+        setDashboardSummary(null);
+        setSummaryError(
+          summaryRes.reason instanceof Error
+            ? summaryRes.reason
+            : new Error('Dashboard summary could not be loaded.')
+        );
+      }
 
       // If all four requests failed, surface the error
       if (
         stuRes.status === 'rejected' &&
         resRes.status === 'rejected' &&
         batchRes.status === 'rejected' &&
-        ledgerRes.status === 'rejected'
+        ledgerRes.status === 'rejected' &&
+        summaryRes.status === 'rejected'
       ) {
         setError(stuRes.reason);
       }
@@ -204,25 +252,6 @@ export function AdminDashboard() {
     const start = (currentPage - 1) * PAGE_SIZE;
     return filteredResults.slice(start, start + PAGE_SIZE);
   }, [filteredResults, currentPage]);
-
-  const pendingCorrectionsCount = useMemo(
-    () =>
-      results.reduce(
-        (sum, r) => sum + ((r.pending_corrections || []).length > 0 ? 1 : 0),
-        0
-      ),
-    [results]
-  );
-
-  const tamperedCount = useMemo(
-    () =>
-      results.filter(
-        (r) =>
-          r.verification_status === 'TAMPERED' ||
-          r.verification_status === 'INVALID_SIGNATURE'
-      ).length,
-    [results]
-  );
 
   function handleMarkChange(studentId: string, subIndex: number, value: number) {
     const bounded = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
@@ -296,7 +325,7 @@ export function AdminDashboard() {
 
     setBusy(true);
     try {
-      const res = await apiFetch<{ student: StudentRecord }>('/api/admin/students', {
+      const res = await apiFetch<unknown>('/api/admin/students', {
         method: 'POST',
         body: JSON.stringify({
           roll_number: cleanRoll,
@@ -306,10 +335,19 @@ export function AdminDashboard() {
         }),
       });
 
-      const newStudent = res.student;
-      setStudents((prev) =>
-        [...prev, newStudent].sort((a, b) => a.roll_number.localeCompare(b.roll_number))
-      );
+      const response = res as { student?: StudentRecord };
+      const newStudent = response.student;
+      if (!newStudent?.id || newStudent.roll_number !== cleanRoll) {
+        throw new Error('Student was not returned by the database after insertion.');
+      }
+
+      // Read the authoritative students table before showing success. This makes the
+      // registry resilient to stale state and proves the inserted row is listable.
+      const refreshedStudents = await fetchStudents();
+      if (!refreshedStudents.some((student) => student.id === newStudent.id)) {
+        throw new Error('Student was inserted but could not be read back from the registry.');
+      }
+      applyStudents(refreshedStudents);
       setMarksByStudent((prev) => ({
         ...prev,
         [newStudent.id]: SEMESTER_1_COURSES.map((c) => ({
@@ -441,7 +479,7 @@ export function AdminDashboard() {
             Published Batches
           </div>
           <div className="ms-metric-value text-zinc-900 mt-1 font-mono">
-            {batches.length}
+            {dashboardSummary ? dashboardSummary.published_batches : '—'}
           </div>
           <div className="text-xs text-stone-500 mt-1">
             Ed25519 Signed Manifests
@@ -453,7 +491,7 @@ export function AdminDashboard() {
             Enrolled Students
           </div>
           <div className="ms-metric-value text-zinc-900 mt-1 font-mono">
-            {students.length}
+            {dashboardSummary ? dashboardSummary.enrolled_students : '—'}
           </div>
           <div className="text-xs text-stone-500 mt-1">
             B.Tech CSE • Semester 1
@@ -465,7 +503,7 @@ export function AdminDashboard() {
             Pending Corrections
           </div>
           <div className="ms-metric-value text-amber-900 mt-1 font-mono">
-            {pendingCorrectionsCount}
+            {dashboardSummary ? dashboardSummary.pending_corrections : '—'}
           </div>
           <div className="text-xs text-amber-700 mt-1">
             Awaiting 2nd Approver Signature
@@ -474,14 +512,16 @@ export function AdminDashboard() {
 
         <div
           className={`bg-white border rounded-lg p-4 ${
-            tamperedCount > 0 ? 'border-red-400 bg-red-50/40' : 'border-stone-300'
+            dashboardSummary?.integrity_alerts
+              ? 'border-red-400 bg-red-50/40'
+              : 'border-stone-300'
           }`}
         >
           <div className="text-xs font-bold uppercase tracking-wider text-red-800">
             Integrity Alerts
           </div>
           <div className="ms-metric-value text-red-900 mt-1 font-mono">
-            {tamperedCount}
+            {dashboardSummary ? dashboardSummary.integrity_alerts : '—'}
           </div>
           <div className="text-xs text-red-700 mt-1">
             Unapproved Database Edits
@@ -493,10 +533,26 @@ export function AdminDashboard() {
             Audit Ledger Events
           </div>
           <div className="ms-metric-value text-zinc-900 mt-1 font-mono">
-            {recentEvents.length}
+            {dashboardSummary ? dashboardSummary.audit_ledger_events : '—'}
           </div>
-          <div className="text-xs text-emerald-700 font-semibold mt-1">
-            SHA-256 Chain Verified
+          <div
+            className={`text-xs font-semibold mt-1 ${
+              dashboardSummary?.integrity_status === 'FAILED'
+                ? 'text-red-700'
+                : dashboardSummary?.integrity_status === 'UNAVAILABLE'
+                ? 'text-amber-700'
+                : 'text-emerald-700'
+            }`}
+          >
+            {summaryError
+              ? 'Unavailable — refresh required'
+              : dashboardSummary?.integrity_status === 'FAILED'
+              ? 'Integrity Verification Failed'
+              : dashboardSummary?.integrity_status === 'UNAVAILABLE'
+              ? 'Integrity Verification Unavailable'
+              : dashboardSummary?.ledger_chain_valid
+              ? 'SHA-256 Chain Verified'
+              : 'SHA-256 Chain Failed'}
           </div>
         </div>
       </div>
@@ -506,6 +562,13 @@ export function AdminDashboard() {
         onRetry={loadAll}
         onDismiss={() => setError(null)}
       />
+      {summaryError && !error && (
+        <ErrorAlert
+          error={summaryError}
+          onRetry={loadAll}
+          onDismiss={() => setSummaryError(null)}
+        />
+      )}
 
       {/* Collapsible Batch Publisher Drawer */}
       {showPublishPanel && isAdmin && (

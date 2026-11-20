@@ -8,7 +8,7 @@ import {
   ResultSnapshotPayload,
   SubjectMark,
 } from '../crypto/canonical.js';
-import { computeLeafHash } from '../crypto/hash.js';
+import { computeLeafHash, computeLedgerEventHash } from '../crypto/hash.js';
 import { buildMerkleTree } from '../crypto/merkle.js';
 import { signPublicationManifest } from '../crypto/signatures.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
@@ -36,6 +36,89 @@ adminRouter.get(
     } catch (err) {
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Failed to fetch students.',
+      });
+    }
+  }
+);
+
+// Dashboard metrics are read directly from their source tables. Counts use
+// Supabase's exact-count mode so they are not limited by the API page size.
+adminRouter.get(
+  '/summary',
+  requireAuth,
+  requireRole('admin', 'approver'),
+  async (_req, res) => {
+    try {
+      const supabase = getSupabaseAdmin();
+      const [students, pendingCorrections, ledger, batches, resultRows] = await Promise.all([
+        supabase.from('students').select('id', { count: 'exact', head: true }),
+        supabase
+          .from('correction_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        supabase.from('ledger_events').select('id', { count: 'exact', head: true }),
+        supabase.from('publication_batches').select('id', { count: 'exact', head: true }),
+        supabase.from('results').select('id').order('created_at', { ascending: true }),
+      ]);
+
+      const queryError = [students, pendingCorrections, ledger, batches, resultRows].find(
+        (query) => query.error
+      )?.error;
+      if (queryError) throw new Error(queryError.message);
+
+      let integrityStatus: 'VERIFIED' | 'FAILED' | 'UNAVAILABLE' = 'VERIFIED';
+      let integrityAlerts = 0;
+      for (const row of resultRows.data || []) {
+        try {
+          const report = await verifySingleResultFromDb(row.id);
+          if (
+            report.verification_status === 'TAMPERED' ||
+            report.verification_status === 'INVALID_SIGNATURE'
+          ) {
+            integrityAlerts += 1;
+            integrityStatus = 'FAILED';
+          }
+        } catch {
+          integrityStatus = 'UNAVAILABLE';
+        }
+      }
+
+      const { data: ledgerRows, error: ledgerRowsError } = await supabase
+        .from('ledger_events')
+        .select('seq_no, prev_event_hash, event_hash, payload_json')
+        .order('seq_no', { ascending: true });
+      if (ledgerRowsError) throw new Error(ledgerRowsError.message);
+
+      let chainValid = true;
+      let expectedPrevHash = '0'.repeat(64);
+      for (const event of ledgerRows || []) {
+        const recomputedHash = computeLedgerEventHash(
+          event.prev_event_hash,
+          event.payload_json
+        );
+        if (
+          event.prev_event_hash !== expectedPrevHash ||
+          recomputedHash !== event.event_hash
+        ) {
+          chainValid = false;
+          break;
+        }
+        expectedPrevHash = event.event_hash;
+      }
+      if (!chainValid) integrityStatus = 'FAILED';
+
+      res.json({
+        enrolled_students: students.count || 0,
+        pending_corrections: pendingCorrections.count || 0,
+        integrity_alerts: integrityAlerts,
+        audit_ledger_events: ledger.count || 0,
+        published_batches: batches.count || 0,
+        ledger_chain_valid: chainValid,
+        integrity_status: integrityStatus,
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to load dashboard summary.',
       });
     }
   }
