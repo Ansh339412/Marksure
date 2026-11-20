@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" fill="none">
+  <rect x="2" y="2" width="44" height="44" rx="10" fill="#991B1B"/>
+  <path d="M13 9H28L35 16V36C35 37.6569 33.6569 39 32 39H13C11.3431 39 10 37.6569 10 36V12C10 10.3431 11.3431 9 13 9Z" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M28 9V16H35" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="15" y1="16" x2="23" y2="16" stroke="#FCA5A5" stroke-width="2.2" stroke-linecap="round"/>
+  <line x1="15" y1="22" x2="21" y2="22" stroke="#FCA5A5" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="15.5" cy="29.5" r="2" fill="#FCA5A5"/>
+  <path d="M17.5 29.5L22 34L32 22" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="22" r="2" fill="#34D399"/>
+  <text x="58" y="29" fill="#FFFFFF" font-family="Inter, system-ui, sans-serif" font-size="24" font-weight="800" letter-spacing="-0.03em">Mark<tspan fill="#FCA5A5">Sure</tspan></text>
+  <text x="59" y="41" fill="#A8A29E" font-family="JetBrains Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.14em">ACADEMIC LEDGER</text>
+</svg>

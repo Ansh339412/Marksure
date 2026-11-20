@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: marksure-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_ROLE_WORKSPACES
+        value: "true"
+      - key: SUPABASE_URL
+        value: https://muiuocdyijlrcjxffcqf.supabase.co
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: INSTITUTION_ID
+        value: MARKSURE-UNIV-01
+      - key: INSTITUTION_PRIVATE_KEY_HEX
+        sync: false
+      - key: INSTITUTION_PUBLIC_KEY_HEX
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
