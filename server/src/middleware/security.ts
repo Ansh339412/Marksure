@@ -108,7 +108,7 @@ export function setHttpOnlySessionCookie(res: Response, cookieValue: string): vo
     `${SESSION_COOKIE_NAME}=${encodeURIComponent(cookieValue)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    isProd ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${maxAgeSec}`,
   ];
   if (isProd) {
@@ -118,9 +118,12 @@ export function setHttpOnlySessionCookie(res: Response, cookieValue: string): vo
 }
 
 export function clearHttpOnlySessionCookie(res: Response): void {
+  const isProd = process.env.NODE_ENV === 'production';
   res.setHeader(
     'Set-Cookie',
-    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; ${
+      isProd ? 'SameSite=None; Secure; ' : 'SameSite=Lax; '
+    }Max-Age=0`
   );
 }
 

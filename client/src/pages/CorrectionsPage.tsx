@@ -17,6 +17,7 @@ import { apiFetch } from '../lib/api';
 import {
   CorrectionApprovalPayload,
   fetchAuthorizedDevSigningKey,
+  getPublicKeyHexClientSide,
   signCorrectionPayloadClientSide,
 } from '../lib/signing';
 import { useAuth } from '../context/AuthContext';
@@ -54,17 +55,26 @@ export function CorrectionsPage() {
 
   // Client-side Ed25519 private key input per approver (never hardcoded in frontend bundle)
   const [privKeyHex, setPrivKeyHex] = useState('');
+  const [usingUnregisteredTestKey, setUsingUnregisteredTestKey] = useState(false);
+
+  async function syncApproverKey() {
+    setUsingUnregisteredTestKey(false);
+    try {
+      const keyData = await fetchAuthorizedDevSigningKey();
+      setPrivKeyHex(keyData.private_key_hex);
+      return keyData.private_key_hex;
+    } catch {
+      return '';
+    }
+  }
 
   useEffect(() => {
     setPrivKeyHex('');
+    setUsingUnregisteredTestKey(false);
     if (user?.role === 'approver') {
-      fetchAuthorizedDevSigningKey()
-        .then((keyData) => {
-          setPrivKeyHex(keyData.private_key_hex);
-        })
-        .catch(() => {});
+      syncApproverKey();
     }
-  }, [user]);
+  }, [user?.id, user?.role_code]);
 
   async function loadData() {
     setLoading(true);
@@ -165,7 +175,21 @@ export function CorrectionsPage() {
     setError(null);
     setBusy(true);
     try {
-      const keyToUse = (overrideKeyHex ?? privKeyHex).trim();
+      let keyToUse = (overrideKeyHex ?? privKeyHex).trim();
+
+      // If key wasn't loaded yet (e.g. slow network after switching approver) and user didn't intentionally select the unregistered test key, fetch/verify it now
+      if (!usingUnregisteredTestKey && !overrideKeyHex && user?.role === 'approver') {
+        const derivedPub = keyToUse
+          ? await getPublicKeyHexClientSide(keyToUse).catch(() => '')
+          : '';
+        if (!keyToUse || (user.public_key_hex && derivedPub !== user.public_key_hex.toLowerCase())) {
+          const freshKey = await syncApproverKey();
+          if (freshKey) {
+            keyToUse = freshKey;
+          }
+        }
+      }
+
       if (!keyToUse) {
         throw new Error(
           'Provide your 64-character hexadecimal Ed25519 signing key to authorize this request.'
@@ -311,30 +335,79 @@ export function CorrectionsPage() {
               128-character Ed25519 signature over the canonical payload. The server verifies
               the signature against the signatory&apos;s registered public key.
             </p>
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setUsingUnregisteredTestKey(false);
+                  setPrivKeyHex(
+                    '1111111111111111111111111111111111111111111111111111111111111111'
+                  );
+                }}
+                className={`px-2.5 py-1 rounded text-xs font-semibold border transition cursor-pointer ${
+                  privKeyHex ===
+                  '1111111111111111111111111111111111111111111111111111111111111111'
+                    ? 'bg-zinc-900 text-white border-zinc-900'
+                    : 'bg-stone-100 hover:bg-stone-200 text-zinc-800 border-stone-300'
+                }`}
+              >
+                Load Key: Dr. Meera Kapoor (APPROVER_1)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUsingUnregisteredTestKey(false);
+                  setPrivKeyHex(
+                    '2222222222222222222222222222222222222222222222222222222222222222'
+                  );
+                }}
+                className={`px-2.5 py-1 rounded text-xs font-semibold border transition cursor-pointer ${
+                  privKeyHex ===
+                  '2222222222222222222222222222222222222222222222222222222222222222'
+                    ? 'bg-zinc-900 text-white border-zinc-900'
+                    : 'bg-stone-100 hover:bg-stone-200 text-zinc-800 border-stone-300'
+                }`}
+              >
+                Load Key: Dr. Karan Bedi (APPROVER_2)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUsingUnregisteredTestKey(true);
+                  setPrivKeyHex(
+                    '9999999999999999999999999999999999999999999999999999999999999999'
+                  );
+                }}
+                className={`px-2.5 py-1 rounded text-xs font-semibold border transition cursor-pointer ${
+                  usingUnregisteredTestKey
+                    ? 'bg-red-700 text-white border-red-700'
+                    : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-300'
+                }`}
+              >
+                Test Unregistered Key Rejection
+              </button>
+            </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
-                type="password"
+                type="text"
                 value={privKeyHex}
-                onChange={(e) => setPrivKeyHex(e.target.value)}
+                onChange={(e) => {
+                  setPrivKeyHex(e.target.value);
+                  setUsingUnregisteredTestKey(false);
+                }}
                 placeholder={
                   user?.role === 'approver'
-                    ? '64-character hexadecimal Ed25519 private key loaded...'
-                    : 'Select an Approver identity above to initialize signing key custody...'
+                    ? '64-character hexadecimal Ed25519 private key...'
+                    : 'Select an Approver identity above to load their signing key...'
                 }
                 className="flex-1 px-3 py-1.5 text-xs font-mono rounded border border-stone-300 bg-stone-50"
               />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setPrivKeyHex(
-                    '9999999999999999999999999999999999999999999999999999999999999999'
-                  )
-                }
-              >
-                Verify Unregistered Key Rejection
-              </Button>
             </div>
+            {usingUnregisteredTestKey && (
+              <div className="mt-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-1.5">
+                Unregistered test key (9999...9999) is currently loaded to demonstrate signature rejection. Click &ldquo;Restore My Registered Key&rdquo; above to sign with {user?.full_name}&apos;s valid registered key.
+              </div>
+            )}
           </div>
 
           {/* Pending Correction Requests Section */}

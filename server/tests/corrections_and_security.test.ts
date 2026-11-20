@@ -10,6 +10,7 @@ import {
   validateCorrectionApprovalPure,
   validateTwoApprovalsBeforeFinalizePure,
 } from '../src/services/correctionService.js';
+import { DEMO_PROFILES } from '../src/middleware/auth.js';
 
 describe('MarkSure Two-Approval Correction & Adversarial Security Suite', () => {
   const approver1 = generateEd25519KeyPair();
@@ -199,5 +200,37 @@ describe('MarkSure Two-Approval Correction & Adversarial Security Suite', () => 
     });
     expect(tamperedEv1Hash).not.toBe(ev1Hash);
     expect(computeLedgerEventHash(tamperedEv1Hash, ev2Payload)).not.toBe(ev2Hash);
+  });
+
+  it('verifies configured DEMO_PROFILES Approver 1 (1111..) and Approver 2 (2222..) keys match 100%', () => {
+    const sigApp1 = signCorrectionApproval(basePayload, '1'.repeat(64));
+    const sigApp2 = signCorrectionApproval(basePayload, '2'.repeat(64));
+
+    const check1 = validateCorrectionApprovalPure({
+      payload: basePayload,
+      expectedPayloadHash: payloadHash,
+      approverId: DEMO_PROFILES['demo-approver-1'].id,
+      approverPublicKeyHex: DEMO_PROFILES['demo-approver-1'].public_key_hex,
+      signatureHex: sigApp1,
+      existingApprovals: [],
+    });
+    expect(check1.valid).toBe(true);
+
+    const check2 = validateCorrectionApprovalPure({
+      payload: basePayload,
+      expectedPayloadHash: payloadHash,
+      approverId: DEMO_PROFILES['demo-approver-2'].id,
+      approverPublicKeyHex: DEMO_PROFILES['demo-approver-2'].public_key_hex,
+      signatureHex: sigApp2,
+      existingApprovals: [
+        {
+          approver_id: DEMO_PROFILES['demo-approver-1'].id,
+          approver_public_key: DEMO_PROFILES['demo-approver-1'].public_key_hex!,
+          signature_hex: sigApp1,
+          signed_payload_hash: payloadHash,
+        },
+      ],
+    });
+    expect(check2.valid).toBe(true);
   });
 });

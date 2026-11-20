@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { getSupabaseAdmin } from '../config/supabase.js';
 import { isSupabaseConfigured } from '../config/env.js';
+import { getPublicKeyFromPrivateHex } from '../crypto/signatures.js';
 import {
   parseCookies,
   SESSION_COOKIE_NAME,
@@ -50,7 +51,8 @@ export const DEMO_PROFILES: Record<string, AuthenticatedUser> = {
     department: 'Academic Scrutiny & Review Board',
     role: 'approver',
     role_code: 'APPROVER_1',
-    public_key_hex: '8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c',
+    // Mathematically derived from private key '1'.repeat(64): d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737
+    public_key_hex: getPublicKeyFromPrivateHex('1'.repeat(64)),
   },
   'demo-approver-2': {
     id: '00000000-0000-0000-0000-000000000003',
@@ -60,7 +62,8 @@ export const DEMO_PROFILES: Record<string, AuthenticatedUser> = {
     department: 'Office of the Controller of Examinations',
     role: 'approver',
     role_code: 'APPROVER_2',
-    public_key_hex: '24715704a7b57239962f59e73f00178d629032f1c370b6b948b3b034769221d6',
+    // Mathematically derived from private key '2'.repeat(64): a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0
+    public_key_hex: getPublicKeyFromPrivateHex('2'.repeat(64)),
   },
   'demo-student-1': {
     id: '00000000-0000-0000-0000-000000000011',
