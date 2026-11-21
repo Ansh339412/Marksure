@@ -66,7 +66,8 @@ The application communicates the result of verification using explicit states, i
 The exact status depends on the verification logic and response returned by the backend.
 
 ## Architecture
-[![Architecture diagram of ansh339412/marksure](https://gitdiagram.com/ansh339412/marksure/diagram.png)](https://gitdiagram.com/ansh339412/marksure?utm_source=readme&utm_medium=picture)
+<img width="7887" height="11662" alt="diagram" src="https://github.com/user-attachments/assets/615643dc-937f-4b32-85c9-157184fa4997" />
+
 ## Technology
 
 | Area | Technologies |
