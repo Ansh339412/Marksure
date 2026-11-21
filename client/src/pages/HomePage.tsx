@@ -1,3 +1,4 @@
+import { Reveal, SelectionTrack } from '../motion/Motion';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
@@ -143,11 +144,11 @@ export function HomePage() {
       {/* ====================================================================
           PHASE 3 — HERO SECTION
           ==================================================================== */}
-      <section className="bg-white border-b border-stone-300">
+      <section className="ms-hero bg-white border-b border-stone-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 lg:py-16">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
             {/* Left Column: Editorial Brand Positioning & CTAs */}
-            <div className="lg:col-span-6 space-y-6">
+            <div className="ms-hero-copy lg:col-span-6 space-y-6">
               <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-md bg-stone-100 border border-stone-300">
                 <span className="w-2 h-2 rounded-full bg-[#7F1D1D]" />
                 <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-zinc-900">
@@ -238,14 +239,14 @@ export function HomePage() {
             </div>
 
             {/* Right Column: Layered Product Interface Visual */}
-            <div className="lg:col-span-6">
+            <div className="ms-hero-visual lg:col-span-6">
               <div className="bg-[#F6F5F1] border border-stone-300 rounded-xl p-4 sm:p-5 space-y-4">
                 {/* Interactive Architecture State Switcher */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-mono text-xs font-bold uppercase tracking-wider text-stone-600">
-                    Interactive Architecture Preview
+                    Illustrative scenarios · not live verification
                   </span>
-                  <div className="inline-flex rounded-md bg-white border border-stone-300 p-0.5">
+                  <SelectionTrack value={previewKey} className="inline-flex flex-wrap rounded-md bg-white border border-stone-300 p-0.5">
                     {(
                       ['verified', 'corrected', 'tampered'] as PreviewStateKey[]
                     ).map((k) => {
@@ -255,6 +256,7 @@ export function HomePage() {
                         <button
                           key={k}
                           type="button"
+                          aria-pressed={active}
                           onClick={() => setPreviewKey(k)}
                           className={`px-2.5 py-1 rounded text-xs font-semibold transition cursor-pointer ${
                             active
@@ -266,11 +268,11 @@ export function HomePage() {
                         </button>
                       );
                     })}
-                  </div>
+                  </SelectionTrack>
                 </div>
 
                 {/* LAYER 1: Academic Result Document Card */}
-                <div className="bg-white border-2 border-zinc-900 rounded-lg overflow-hidden shadow-xs">
+                <div key={previewKey} className="ms-content-enter bg-white border-2 border-zinc-900 rounded-lg overflow-hidden shadow-xs">
                   {/* Document Header */}
                   <div className="px-4 py-3.5 bg-stone-50 border-b-2 border-[#7F1D1D] flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
@@ -471,7 +473,7 @@ export function HomePage() {
       {/* ====================================================================
           ARCHITECTURAL PILLARS SECTION
           ==================================================================== */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+      <Reveal><section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-stone-300 pb-4">
           <div>
             <div className="font-mono text-xs font-bold uppercase tracking-wider text-[#7F1D1D]">
@@ -533,7 +535,7 @@ export function HomePage() {
             </p>
           </div>
         </div>
-      </section>
+      </section></Reveal>
     </PageTransition>
   );
 }

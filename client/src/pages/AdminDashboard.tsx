@@ -1,3 +1,4 @@
+import { MetricValue, SelectionTrack } from '../motion/Motion';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -512,13 +513,13 @@ export function AdminDashboard() {
       </div>
 
       {/* Compact Operational Metrics Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+      <div className="ms-metrics grid grid-cols-2 sm:grid-cols-5 gap-3.5">
         <div className="bg-white border border-stone-300 rounded-lg p-4">
           <div className="text-xs font-bold uppercase tracking-wider text-stone-500">
             Published Batches
           </div>
           <div className="ms-metric-value text-zinc-900 mt-1 font-mono">
-            {dashboardSummary ? dashboardSummary.published_batches : '—'}
+            <MetricValue value={dashboardSummary ? dashboardSummary.published_batches : '—'} />
           </div>
           <div className="text-xs text-stone-500 mt-1">
             Ed25519 Signed Manifests
@@ -530,7 +531,7 @@ export function AdminDashboard() {
             Enrolled Students
           </div>
           <div className="ms-metric-value text-zinc-900 mt-1 font-mono">
-            {dashboardSummary ? dashboardSummary.enrolled_students : '—'}
+            <MetricValue value={dashboardSummary ? dashboardSummary.enrolled_students : '—'} />
           </div>
           <div className="text-xs text-stone-500 mt-1">
             B.Tech CSE • Semester 1
@@ -542,7 +543,7 @@ export function AdminDashboard() {
             Pending Corrections
           </div>
           <div className="ms-metric-value text-amber-900 mt-1 font-mono">
-            {dashboardSummary ? dashboardSummary.pending_corrections : '—'}
+            <MetricValue value={dashboardSummary ? dashboardSummary.pending_corrections : '—'} />
           </div>
           <div className="text-xs text-amber-700 mt-1">
             Awaiting 2nd Approver Signature
@@ -560,7 +561,7 @@ export function AdminDashboard() {
             Integrity Alerts
           </div>
           <div className="ms-metric-value text-red-900 mt-1 font-mono">
-            {dashboardSummary ? dashboardSummary.integrity_alerts : '—'}
+            <MetricValue value={dashboardSummary ? dashboardSummary.integrity_alerts : '—'} />
           </div>
           <div className="text-xs text-red-700 mt-1">
             Unapproved Database Edits
@@ -572,7 +573,7 @@ export function AdminDashboard() {
             Audit Ledger Events
           </div>
           <div className="ms-metric-value text-zinc-900 mt-1 font-mono">
-            {dashboardSummary ? dashboardSummary.audit_ledger_events : '—'}
+            <MetricValue value={dashboardSummary ? dashboardSummary.audit_ledger_events : '—'} />
           </div>
           <div
             className={`text-xs font-semibold mt-1 ${
@@ -739,10 +740,11 @@ export function AdminDashboard() {
       {/* MAIN FOCUS: Published Results Registry Table */}
       <div className="bg-white border border-stone-300 rounded overflow-hidden">
         {/* Top Tab Bar Switching between Published Results & Enrolled Students */}
-        <div className="flex border-b border-stone-300 bg-stone-100/70 px-4 pt-2.5 gap-2">
+        <SelectionTrack value={activeRegistryTab} className="flex border-b border-stone-300 bg-stone-100/70 px-4 pt-2.5 gap-2">
           <button
             type="button"
             onClick={() => setActiveRegistryTab('RESULTS')}
+            aria-pressed={activeRegistryTab === 'RESULTS'}
             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition cursor-pointer ${
               activeRegistryTab === 'RESULTS'
                 ? 'border-[#7F1D1D] text-[#7F1D1D] bg-white rounded-t'
@@ -754,6 +756,7 @@ export function AdminDashboard() {
           <button
             type="button"
             onClick={() => setActiveRegistryTab('STUDENTS')}
+            aria-pressed={activeRegistryTab === 'STUDENTS'}
             className={`px-4 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition cursor-pointer ${
               activeRegistryTab === 'STUDENTS'
                 ? 'border-[#7F1D1D] text-[#7F1D1D] bg-white rounded-t'
@@ -762,7 +765,7 @@ export function AdminDashboard() {
           >
             Enrolled Student Directory ({students.length})
           </button>
-        </div>
+        </SelectionTrack>
 
         <div className="p-4 border-b border-stone-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-stone-50/70">
           <div>
@@ -794,7 +797,7 @@ export function AdminDashboard() {
 
             {/* Filter Pills (Results view only) */}
             {activeRegistryTab === 'RESULTS' && (
-              <div className="flex items-center gap-1 text-[11px] font-semibold">
+              <SelectionTrack value={statusFilter} className="flex flex-wrap items-center gap-1 text-[11px] font-semibold">
                 <Filter className="w-3.5 h-3.5 text-stone-400 mr-1" />
                 {(
                   [
@@ -808,6 +811,7 @@ export function AdminDashboard() {
                   <button
                     key={tab.id}
                     type="button"
+                    aria-pressed={statusFilter === tab.id}
                     onClick={() => setStatusFilter(tab.id)}
                     className={`px-2.5 py-1 rounded border transition cursor-pointer ${
                       statusFilter === tab.id
@@ -818,7 +822,7 @@ export function AdminDashboard() {
                     {tab.label}
                   </button>
                 ))}
-              </div>
+              </SelectionTrack>
             )}
           </div>
         </div>
@@ -828,7 +832,7 @@ export function AdminDashboard() {
             <SkeletonTable rows={6} />
           </div>
         ) : activeRegistryTab === 'STUDENTS' ? (
-          <div className="overflow-x-auto">
+          <div className="ms-content-enter overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-100/70 text-[11px] font-bold uppercase tracking-wider text-stone-600">
@@ -952,7 +956,7 @@ export function AdminDashboard() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div key={`${statusFilter}-${currentPage}`} className="ms-content-enter overflow-x-auto">
               <table className="w-full text-left border-collapse text-[15px]">
                 <thead>
                   <tr className="bg-stone-100 border-b border-stone-300 text-xs font-bold text-stone-700 uppercase tracking-wider">

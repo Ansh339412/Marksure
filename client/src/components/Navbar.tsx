@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { SelectionTrack } from '../motion/Motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LogOut,
@@ -108,6 +109,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMobileMenuOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, []);
+
   async function handleLogout() {
     await logout();
     navigate('/login');
@@ -188,6 +196,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Nav Links */}
           <nav className="flex-1 p-3 space-y-1.5">
+            <SelectionTrack vertical value={`${location.pathname}-${collapsed}-${user?.role_code}`} className="space-y-1.5">
             {!collapsed && (
               <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-stone-500">
                 Workspace Modules
@@ -200,6 +209,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.to}
                   to={item.to}
+                  aria-current={active ? "page" : undefined}
                   title={collapsed ? item.label : undefined}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-[15px] font-semibold transition-colors ${
                     active
@@ -212,6 +222,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            </SelectionTrack>
           </nav>
 
           {/* Sidebar Footer Identity */}
@@ -262,6 +273,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 aria-label="Toggle navigation menu"
+                aria-expanded={mobileMenuOpen}
+                aria-controls="mobile-navigation"
                 className="md:hidden p-2 rounded-md border border-stone-300 text-stone-700 hover:bg-stone-100"
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -308,7 +321,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Mobile Navigation Drawer */}
           {mobileMenuOpen && (
-            <div className="no-print md:hidden bg-white border-b border-stone-300 p-4 space-y-1.5 shadow-md">
+            <div id="mobile-navigation" className="ms-drawer-enter no-print md:hidden bg-white border-b border-stone-300 p-4 space-y-1.5 shadow-md">
               {visibleNavItems.map((item) => {
                 const Icon = item.icon;
                 const active = isItemActive(item);
@@ -316,6 +329,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.to}
                     to={item.to}
+                  aria-current={active ? "page" : undefined}
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-3 px-3.5 py-2.5 rounded-md text-[15px] font-semibold ${
                       active

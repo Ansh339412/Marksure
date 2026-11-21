@@ -218,23 +218,17 @@ export function VerificationSequencePanel({
   report,
 }: {
   loading: boolean;
-  report: any | null;
+  report: { current_version: number; student?: { roll_number: string }; signature_valid: boolean; merkle_proof_valid: boolean; leaf_index: number; direct_db_tampering_detected: boolean; tampered_fields?: unknown[]; verification_status: string } | null;
 }) {
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
-
-  useEffect(() => {
-    if (!loading) {
-      setActiveStepIndex(4);
-      return;
-    }
-    setActiveStepIndex(0);
-    const interval = setInterval(() => {
-      setActiveStepIndex((prev) => (prev < 3 ? prev + 1 : prev));
-    }, 180);
-    return () => clearInterval(interval);
-  }, [loading]);
-
-  if (!loading && !report) return null;
+  if (loading) return (
+    <div role="status" className="ms-verification-wait bg-white border border-stone-300 rounded-lg p-6 flex items-center gap-4">
+      <AnimatedMarkSureSymbol size={42} />
+      <div><h3 className="font-bold">Verifying the published record</h3>
+      <p className="text-sm text-stone-600">Awaiting the server's signature, Merkle proof and record comparison results.</p>
+      <div className="ms-progress-track" aria-hidden="true"><span /></div></div>
+    </div>
+  );
+  if (!report) return null;
 
   const steps = [
     {
@@ -242,11 +236,7 @@ export function VerificationSequencePanel({
       detail: report
         ? `Snapshot v${report.current_version} retrieved (${report.student?.roll_number})`
         : 'Fetching immutable snapshot and publication manifest...',
-      status: loading
-        ? activeStepIndex > 0
-          ? 'done'
-          : 'active'
-        : report
+      status: report
         ? 'done'
         : 'failed',
     },
@@ -257,13 +247,7 @@ export function VerificationSequencePanel({
           ? 'Ed25519 signature verified against trusted institutional public key'
           : 'Ed25519 signature verification failed'
         : 'Validating RFC 8032 Ed25519 manifest signature...',
-      status: loading
-        ? activeStepIndex > 1
-          ? 'done'
-          : activeStepIndex === 1
-          ? 'active'
-          : 'pending'
-        : report?.signature_valid
+      status: report?.signature_valid
         ? 'done'
         : 'failed',
     },
@@ -274,13 +258,7 @@ export function VerificationSequencePanel({
           ? `Leaf #${report.leaf_index} hashes cleanly to signed Merkle root`
           : 'Merkle proof path failed against batch root'
         : 'Recomputing SHA-256 leaf digest and sibling hashes...',
-      status: loading
-        ? activeStepIndex > 2
-          ? 'done'
-          : activeStepIndex === 2
-          ? 'active'
-          : 'pending'
-        : report?.merkle_proof_valid
+      status: report?.merkle_proof_valid
         ? 'done'
         : 'failed',
     },
@@ -291,22 +269,12 @@ export function VerificationSequencePanel({
           ? 'All live database subject marks match the signed snapshot'
           : `Mismatch detected: ${report.tampered_fields?.length || 1} subject field(s) altered in live database`
         : 'Auditing live database fields against preserved snapshot...',
-      status: loading
-        ? activeStepIndex === 3
-          ? 'active'
-          : 'pending'
-        : !report?.direct_db_tampering_detected
-        ? 'done'
-        : 'tampered',
+      status: report.direct_db_tampering_detected ? 'tampered' : 'done',
     },
     {
-      label: 'Displaying the final verification result',
-      detail: report
-        ? `Final verdict: ${report.verification_status}`
-        : 'Awaiting cryptographic engine verdict...',
-      status: loading
-        ? 'pending'
-        : report?.verification_status === 'VERIFIED' ||
+      label: 'Final verification result',
+      detail: `Final verdict: ${report.verification_status}`,
+      status: report?.verification_status === 'VERIFIED' ||
           report?.verification_status === 'CORRECTED'
         ? 'done'
         : 'tampered',
@@ -314,10 +282,10 @@ export function VerificationSequencePanel({
   ];
 
   return (
-    <div className="bg-white border border-stone-300 rounded-lg p-5">
+    <div className="ms-content-enter bg-white border border-stone-300 rounded-lg p-5">
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-stone-200">
         <div className="flex items-center gap-3">
-          <AnimatedMarkSureSymbol size={36} />
+          <AnimatedMarkSureSymbol size={36} className="ms-loader-static" />
           <div>
             <h3 className="text-base font-bold text-zinc-900">
               {loading

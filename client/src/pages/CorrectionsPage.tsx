@@ -570,8 +570,8 @@ export function CorrectionsPage() {
                           const app = approvals[idx];
                           return (
                             <div
-                              key={slotInfo.slot}
-                              className={`p-3.5 rounded border text-xs ${
+                              key={`${slotInfo.slot}-${app ? 'signed' : 'pending'}`}
+                              className={`ms-content-enter p-3.5 rounded border text-xs ${
                                 app
                                   ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
                                   : 'bg-stone-50 border-dashed border-stone-300 text-stone-600'

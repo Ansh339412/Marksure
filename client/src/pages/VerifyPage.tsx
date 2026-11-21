@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ShieldAlert,
@@ -39,6 +39,7 @@ export function VerifyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  const requestVersion = useRef(0);
   const qrLeaf = searchParams.get('leaf') || '';
   const qrVer = searchParams.get('v') || '';
 
@@ -52,6 +53,8 @@ export function VerifyPage() {
   }
 
   async function runVerification(idToVerify: string) {
+    const version = ++requestVersion.current;
+    setReport(null);
     setLoading(true);
     setError(null);
     try {
@@ -61,13 +64,15 @@ export function VerifyPage() {
       const qs = query.toString() ? `?${query.toString()}` : '';
 
       const data = await apiFetch<any>(`/api/verify/${idToVerify}${qs}`);
+      if (version !== requestVersion.current) return;
       setReport(data);
       setVerifiedAt(new Date().toLocaleString());
     } catch (err) {
+      if (version !== requestVersion.current) return;
       setReport(null);
       setError(err);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }
 
@@ -78,14 +83,17 @@ export function VerifyPage() {
       runVerification(resultId);
     } else {
       setReport(null);
+      setLoading(false);
+      setError(null);
     }
+    return () => { requestVersion.current++; };
   }, [resultId, qrLeaf, qrVer]);
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
     const cleaned = searchInput.trim();
     if (!cleaned) return;
-    navigate(`/verify/${cleaned}`);
+    navigate(`/verify/${encodeURIComponent(cleaned)}`);
   }
 
   const caseA = directory.find((d) => d.roll_number === 'REG-2026-CSE-001');
@@ -129,82 +137,18 @@ export function VerifyPage() {
           )}
         </div>
 
-        {/* Verification Reference Cases Bar */}
-        {directory.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {caseA && (
-              <Link
-                to={`/verify/${caseA.result_id}?v=${caseA.current_version}&leaf=${caseA.latest_leaf_hash}`}
-                className={`p-4 rounded-lg border text-sm transition ${
-                  resultId === caseA.result_id
-                    ? 'bg-emerald-50 border-emerald-400'
-                    : 'bg-stone-50 border-stone-300 hover:border-zinc-500'
-                }`}
-              >
-                <div className="flex items-center justify-between font-bold text-emerald-900">
-                  <span>Case A: Authentic Published Record</span>
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-100 border border-emerald-300">
-                    VERIFIED
-                  </span>
-                </div>
-                <div className="text-zinc-900 font-bold text-base mt-1.5">
-                  {caseA.roll_number} — {caseA.full_name}
-                </div>
-                <div className="text-xs text-stone-600 mt-0.5">
-                  All 6 subjects match the signed Merkle snapshot.
-                </div>
-              </Link>
-            )}
-
-            {caseB && (
-              <Link
-                to={`/verify/${caseB.result_id}?v=${caseB.current_version}&leaf=${caseB.latest_leaf_hash}`}
-                className={`p-4 rounded-lg border text-sm transition ${
-                  resultId === caseB.result_id
-                    ? 'bg-amber-50 border-amber-400'
-                    : 'bg-stone-50 border-stone-300 hover:border-zinc-500'
-                }`}
-              >
-                <div className="flex items-center justify-between font-bold text-amber-900">
-                  <span>Case B: Pending Dual-Control Correction</span>
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-100 border border-amber-300">
-                    1/2 SIGNED
-                  </span>
-                </div>
-                <div className="text-zinc-900 font-bold text-base mt-1.5">
-                  {caseB.roll_number} — {caseB.full_name}
-                </div>
-                <div className="text-xs text-stone-600 mt-0.5">
-                  MTH165 (76 → 84) has 1 signature; 2nd approval pending.
-                </div>
-              </Link>
-            )}
-
-            {caseC && (
-              <Link
-                to={`/verify/${caseC.result_id}?v=${caseC.current_version}&leaf=${caseC.latest_leaf_hash}`}
-                className={`p-4 rounded-lg border text-sm transition ${
-                  resultId === caseC.result_id
-                    ? 'bg-red-50 border-red-400'
-                    : 'bg-stone-50 border-stone-300 hover:border-zinc-500'
-                }`}
-              >
-                <div className="flex items-center justify-between font-bold text-red-900">
-                  <span>Case C: Unapproved Database Edit</span>
-                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-red-100 border border-red-300">
-                    TAMPERED
-                  </span>
-                </div>
-                <div className="text-zinc-900 font-bold text-base mt-1.5">
-                  {caseC.roll_number} — {caseC.full_name}
-                </div>
-                <div className="text-xs text-stone-600 mt-0.5">
-                  CSE101 modified directly in DB (Signed: 68 vs Live: 92).
-                </div>
-              </Link>
-            )}
-          </div>
-        )}
+        {/* Shortcuts identify records; only a server report supplies a verdict. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[caseA, caseB, caseC].filter(Boolean).map((record) => (
+            <Link key={record.result_id}
+              to={`/verify/${record.result_id}?v=${record.current_version}&leaf=${record.latest_leaf_hash}`}
+              className="p-4 rounded-lg border border-stone-300 bg-stone-50 text-sm">
+              <span className="font-bold">{record.roll_number}</span>
+              <span className="block text-stone-600">{record.masked_name}</span>
+              <span className="block text-xs text-stone-500 mt-1">Check published version {record.current_version}</span>
+            </Link>
+          ))}
+        </div>
 
         {/* Record UUID Lookup Form */}
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-2.5">
@@ -250,7 +194,7 @@ export function VerifyPage() {
                   </span>
                 </div>
                 <div className="text-base font-bold text-zinc-900 mt-1.5">
-                  {item.full_name}
+                  {item.masked_name}
                 </div>
                 <div className="text-xs text-stone-500 mt-0.5">
                   B.Tech CSE • {item.academic_term}
@@ -583,7 +527,8 @@ export function VerifyPage() {
           )}
 
           {/* Cryptographic Proof Inspector */}
-          <div className="bg-white border border-stone-300 rounded-lg p-6 font-mono text-xs space-y-3">
+          <details className="bg-white border border-stone-300 rounded-lg p-6 font-mono text-xs space-y-3">
+            <summary className="cursor-pointer font-sans font-bold text-sm p-1">Inspect cryptographic proof and signatures</summary>
             <div className="flex items-center justify-between font-sans">
               <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-wider text-zinc-900">
                 <Lock className="w-4 h-4 text-[#7F1D1D]" />
@@ -649,7 +594,7 @@ export function VerifyPage() {
                 </div>
               )}
             </div>
-          </div>
+          </details>
         </div>
       )}
     </PageTransition>

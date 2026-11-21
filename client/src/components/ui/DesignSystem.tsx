@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, useRef, useId } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -15,15 +15,7 @@ import { ApiError } from '../../lib/api';
 /* ============================================================================
    1. PAGE TRANSITION WRAPPER (Respects prefers-reduced-motion via CSS)
    ============================================================================ */
-export function PageTransition({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={`ms-page-enter ${className}`}>{children}</div>;
-}
+export { PageTransition } from '../../motion/Motion';
 
 /* ============================================================================
    2. BREADCRUMBS
@@ -154,43 +146,37 @@ export function Modal({
   children: React.ReactNode;
   maxWidth?: string;
 }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (!open) { dialog.close(); return; }
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => {
+      dialog.close();
+      document.body.style.overflow = overflow;
+      previousFocus?.focus();
+    };
+  }, [open]);
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ms-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/50"
-    >
-      <div
-        className={`ms-modal-enter bg-white border border-stone-300 rounded-lg w-full ${maxWidth} overflow-hidden shadow-lg`}
-      >
-        <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between bg-stone-50">
-          <h3 id="ms-modal-title" className="text-base font-bold text-zinc-900">
-            {title}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close modal"
-            className="text-stone-500 hover:text-zinc-900 p-1 rounded hover:bg-stone-200 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
+    <dialog ref={ref} aria-labelledby={titleId}
+      onCancel={(event) => { event.preventDefault(); closeRef.current(); }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRef.current(); }
+      }}
+      className={`ms-dialog bg-white border border-stone-300 rounded-xl w-full ${maxWidth} p-0 text-zinc-900`}>
+      <div className="px-5 py-4 border-b border-stone-200 flex items-center justify-between bg-stone-50">
+        <h3 id={titleId} className="text-base font-bold">{title}</h3>
+        <button type="button" onClick={onClose} aria-label="Close modal" className="p-2 rounded"><X className="w-5 h-5" /></button>
       </div>
-    </div>
+      <div className="p-5">{children}</div>
+    </dialog>
   );
 }
 
@@ -256,7 +242,7 @@ export function ErrorAlert({
   return (
     <div
       role="alert"
-      className="ms-page-enter p-4 rounded-lg bg-red-50 border border-red-300 text-red-950 text-sm flex items-start justify-between gap-3"
+      className="p-4 rounded-lg bg-red-50 border border-red-300 text-red-950 text-sm flex items-start justify-between gap-3"
     >
       <div className="flex items-start gap-3">
         <ShieldAlert className="w-5 h-5 text-red-700 shrink-0 mt-0.5" />
@@ -339,7 +325,7 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="p-10 text-center bg-white border border-stone-300 rounded-lg">
+    <div className="ms-content-enter p-10 text-center bg-white border border-stone-300 rounded-lg">
       <Info className="w-8 h-8 text-stone-400 mx-auto mb-2.5" />
       <h3 className="text-base font-bold text-zinc-900">{title}</h3>
       <p className="text-sm text-stone-600 mt-1 max-w-md mx-auto">{description}</p>
@@ -421,12 +407,17 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
   const notify = useCallback((toast: Omit<ToastItem, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setToasts((prev) => [...prev, { ...toast, id }]);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4500);
+    timers.current.add(timer);
   }, []);
 
   function dismiss(id: string) {
@@ -438,7 +429,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="no-print fixed bottom-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
+        className="no-print fixed bottom-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-[calc(100%-2rem)] pointer-events-none"
       >
         {toasts.map((t) => (
           <div

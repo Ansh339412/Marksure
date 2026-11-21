@@ -1,0 +1,66 @@
+:root {
+  --ms-motion-ease: cubic-bezier(.16,1,.3,1);
+  --ms-motion-quick: 160ms;
+  --ms-motion-page: 320ms;
+}
+@keyframes msContent { from { opacity: .35; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes msLight { from { opacity: 0; transform: translateX(-3%); } to { opacity: 1; transform: none; } }
+@keyframes msProgress { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
+@keyframes msDrawer { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.ms-content-enter, .ms-value-change { animation: msContent var(--ms-motion-page) var(--ms-motion-ease); }
+.ms-value-change { display: inline-block; font-variant-numeric: tabular-nums; }
+.ms-selection-track { position: relative; }
+.ms-selection-line { position: absolute; left: 0; top: 0; height: 2px; background: var(--ms-accent-primary); pointer-events: none; transition: transform 240ms var(--ms-motion-ease); }
+.ms-page > :first-child { position: relative; }
+.ms-metrics > * { animation: msContent 360ms var(--ms-motion-ease) backwards; transition: transform 160ms, border-color 160ms; }
+.ms-metrics > :nth-child(2) { animation-delay: 45ms; }
+.ms-metrics > :nth-child(3) { animation-delay: 90ms; }
+.ms-metrics > :nth-child(4) { animation-delay: 135ms; }
+.ms-metrics > :nth-child(5) { animation-delay: 180ms; }
+.ms-hero { position: relative; isolation: isolate; overflow: clip; }
+.ms-hero::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: none; background-size: auto, 48px 48px, 48px 48px; animation: msLight 1.2s ease-out both; }
+.ms-hero-copy > * { animation: msContent 440ms var(--ms-motion-ease) backwards; }
+.ms-hero-copy > :nth-child(2) { animation-delay: 50ms; }
+.ms-hero-copy > :nth-child(3) { animation-delay: 100ms; }
+.ms-hero-copy > :nth-child(4) { animation-delay: 150ms; }
+.ms-hero-visual { animation: msContent 520ms 180ms var(--ms-motion-ease) backwards; }
+.ms-drawer-enter { animation: msDrawer 220ms var(--ms-motion-ease); }
+.ms-dialog { margin: auto; max-height: calc(100dvh - 2rem); max-width: min(36rem, calc(100vw - 2rem)); overflow-y: auto; }
+.ms-dialog[open] { animation: msModalScaleIn 220ms var(--ms-motion-ease); }
+.ms-dialog::backdrop { background: #09090b80; animation: msLight 160ms ease; }
+/* Progressive enhancement: browsers without discrete transitions close immediately. */
+@supports (transition-behavior: allow-discrete) {
+  .ms-dialog { opacity: 0; transform: scale(.98); transition: opacity 160ms, transform 160ms, overlay 160ms allow-discrete, display 160ms allow-discrete; }
+  .ms-dialog[open] { opacity: 1; transform: none; }
+}
+.ms-progress-track { margin-top: 12px; height: 2px; max-width: 22rem; overflow: hidden; background: var(--ms-border-subtle); }
+.ms-progress-track span { display: block; width: 30%; height: 100%; background: var(--ms-accent-primary); animation: msProgress 1.6s ease-in-out infinite; }
+.ms-loader-static * { animation: none !important; stroke-dashoffset: 0; }
+svg .ms-loader-folio, svg .ms-loader-corner, svg .ms-loader-line-1, svg .ms-loader-line-2,
+svg .ms-loader-node-1, svg .ms-loader-check, svg .ms-loader-root-dot {
+  animation-iteration-count: 2;
+  animation-fill-mode: forwards;
+}
+.ms-ledger > * { border-left: 2px solid var(--ms-border-default); margin-left: 1rem; }
+.ms-ledger-proof[open] { border-left: 2px solid var(--ms-accent-primary); padding-left: .75rem; }
+.ms-loader-container { fill: #7F1D1D; }
+.ms-loader-line-1, .ms-loader-line-2 { stroke: #FCA5A5; }
+button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
+button, input, select, textarea, summary { transition: background-color 160ms, border-color 160ms, color 160ms, transform 160ms; }
+button:enabled:active { transform: translateY(1px); }
+:focus-visible { outline: 2px solid var(--ms-accent-primary); outline-offset: 3px; }
+tbody tr { transition: background-color 160ms; }
+details[open] > :not(summary) { animation: msContent 220ms var(--ms-motion-ease); }
+nav a[aria-current="page"] { border-left: 3px solid var(--ms-accent-primary); }
+@media (hover: hover) and (pointer: fine) {
+  .ms-metrics > *:hover { transform: translateY(-2px); border-color: var(--ms-accent-primary); }
+  nav a:hover svg { transform: translateX(2px); }
+  nav a svg { transition: transform 160ms; }
+}
+@media (max-width: 640px) { .ms-hero-copy > *, .ms-hero-visual { animation-delay: 0ms; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .ms-progress-track span { transform: none; width: 100%; opacity: .6; }
+  .ms-metrics > *:hover, nav a:hover svg { transform: none; }
+}
+@media print { *, *::before, *::after { animation: none !important; transition: none !important; } }

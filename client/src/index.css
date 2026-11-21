@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./motion/motion.css";
+@import "./motion/theme.css";
 
 :root {
   --ms-bg-canvas: #F6F5F1;

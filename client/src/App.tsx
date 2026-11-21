@@ -45,14 +45,6 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
-function RootStartupGate({ children }: { children: React.ReactNode }) {
-  const { loading } = useAuth();
-  if (loading) {
-    return <InitialAppLoader message="Securing your academic records" />;
-  }
-  return <>{children}</>;
-}
-
 export default function App() {
   return (
     <GlobalErrorBoundary>
@@ -60,7 +52,7 @@ export default function App() {
         <AuthProvider>
           <BrowserRouter>
             <AppShell>
-              <RootStartupGate>
+
                 <Routes>
                   {/* Redesigned Homepage & Hero */}
                   <Route path="/" element={<HomePage />} />
@@ -131,7 +123,7 @@ export default function App() {
                   {/* 404 Catch-All Fallback */}
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
-              </RootStartupGate>
+
             </AppShell>
           </BrowserRouter>
         </AuthProvider>

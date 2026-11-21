@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { SelectionTrack } from '../motion/Motion';
 import { Link } from 'react-router-dom';
 import {
   ShieldAlert,
@@ -54,6 +55,8 @@ export function AuditDashboardPage() {
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [eventFilter, setEventFilter] = useState<string>('ALL');
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
 
   async function runAuditScan() {
     setLoading(true);
@@ -90,15 +93,21 @@ export function AuditDashboardPage() {
     runAuditScan();
   }, []);
 
-  function copySql(text: string, label: string) {
-    navigator.clipboard.writeText(text);
+  async function copySql(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      notify({ type: 'error', title: 'Copy unavailable', message: 'Select and copy the command manually.' });
+      return;
+    }
+    clearTimeout(copyTimer.current);
     setCopiedLabel(label);
     notify({
       type: 'info',
       title: 'SQL Command Copied',
       message: 'Copied SQL command to clipboard for execution in Supabase SQL Editor.',
     });
-    setTimeout(() => setCopiedLabel(null), 2500);
+    copyTimer.current = setTimeout(() => setCopiedLabel(null), 2500);
   }
 
   const filteredEvents = useMemo(() => {
@@ -242,7 +251,7 @@ export function AuditDashboardPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold">
+                  <SelectionTrack value={eventFilter} className="flex flex-wrap items-center gap-1 text-[11px] font-semibold">
                     <Filter className="w-3.5 h-3.5 text-stone-400 mr-1" />
                     {[
                       { id: 'ALL', label: 'All Events' },
@@ -254,6 +263,7 @@ export function AuditDashboardPage() {
                       <button
                         key={f.id}
                         type="button"
+                        aria-pressed={eventFilter === f.id}
                         onClick={() => setEventFilter(f.id)}
                         className={`px-2 py-0.5 rounded border transition cursor-pointer ${
                           eventFilter === f.id
@@ -264,7 +274,7 @@ export function AuditDashboardPage() {
                         {f.label}
                       </button>
                     ))}
-                  </div>
+                  </SelectionTrack>
 
                   <span
                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold border ${
@@ -291,7 +301,7 @@ export function AuditDashboardPage() {
                   />
                 </div>
               ) : (
-                <div className="divide-y divide-stone-200">
+                <div key={eventFilter} className="ms-content-enter ms-ledger divide-y divide-stone-200">
                   {filteredEvents.map((ev: any) => {
                     const meta = EVENT_TYPE_LABELS[ev.event_type] || {
                       title: ev.event_type,
@@ -329,16 +339,16 @@ export function AuditDashboardPage() {
                           {summarizeEventPayload(ev)}
                         </p>
 
-                        <div className="flex flex-wrap items-center gap-4 text-[11px] font-mono text-stone-500 pt-0.5">
-                          <span>
-                            <strong>Prev Hash:</strong> {ev.prev_event_hash.slice(0, 24)}
-                            ...
-                          </span>
-                          <span>
+                        <details className="ms-ledger-proof text-[11px] font-mono text-stone-500 pt-0.5">
+                          <summary className="cursor-pointer py-2">Inspect previous-hash relationship</summary>
+                          <div className="break-all py-2">
+                            <strong>Previous event hash:</strong> {ev.prev_event_hash}
+                          </div>
+                          <div className="break-all py-2">
                             <strong className="text-zinc-800">Event SHA-256:</strong>{' '}
                             {ev.event_hash}
-                          </span>
-                        </div>
+                          </div>
+                        </details>
                       </div>
                     );
                   })}
