@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env, isSupabaseConfigured } from './config/env.js';
 import {
   createRateLimiter,
+  csrfOriginCheck,
   enforceJsonContentType,
   globalErrorHandler,
   securityHeaders,
@@ -20,28 +21,32 @@ export const app = express();
 // 1. Defensive HTTP Security Headers
 app.use(securityHeaders);
 
-// 2. Strict CORS Configuration (supports local dev, configured CORS_ORIGIN, and Vercel preview/prod domains)
+// 2. Strict CORS Configuration (Explicitly allows only canonical production host and allowlisted origins)
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Allow requests with no Origin header (health checks, server-to-server, curl)
       if (!origin) {
         callback(null, true);
         return;
       }
-      const allowedList = [
-        env.corsOrigin,
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-      ];
+
+      // Check strictly against configured allowed origins
+      if (env.allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      // In development mode only, permit localhost ports
       if (
-        env.corsOrigin === '*' ||
-        allowedList.includes(origin) ||
-        origin.endsWith('.vercel.app')
+        !env.isProduction &&
+        (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))
       ) {
         callback(null, true);
         return;
       }
-      callback(new Error('Origin not permitted by CORS policy'));
+
+      callback(new Error('Origin not permitted by MarkSure institutional CORS policy'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -49,11 +54,14 @@ app.use(
   })
 );
 
-// 3. Enforce application/json on body requests (HTTP 415) & limit payload size (HTTP 413)
+// 3. Enforce CSRF Origin verification on state-changing requests
+app.use(csrfOriginCheck);
+
+// 4. Enforce application/json on body requests (HTTP 415) & limit payload size (HTTP 413)
 app.use(enforceJsonContentType);
 app.use(express.json({ limit: '512kb' }));
 
-// 4. General API Rate Limiter (HTTP 429)
+// 5. General API Rate Limiter (HTTP 429)
 app.use(
   '/api',
   createRateLimiter({
@@ -102,14 +110,15 @@ app.use(globalErrorHandler);
 if (process.env.NODE_ENV !== 'test') {
   app.listen(env.port, async () => {
     console.log(
-      `[MarkSure Server] Listening on http://localhost:${env.port} (Database configured: ${isSupabaseConfigured()})`
+      `[MarkSure Server] Listening on http://localhost:${env.port} (Environment: ${env.nodeEnv}, Database configured: ${isSupabaseConfigured()})`
     );
-    if (isSupabaseConfigured()) {
+    // Section 3.C Security Requirement: Never automatically seed demo users or default passwords in production
+    if (env.autoSeedDemoData && isSupabaseConfigured()) {
       try {
         const res = await ensureDemoDataSeeded();
         console.log(`[MarkSure Registry] ${res.message}`);
       } catch (err) {
-        console.warn('[MarkSure Registry] Startup initialization warning:', err);
+        console.warn('[MarkSure Registry] Startup demo data seeding warning:', err);
       }
     }
   });

@@ -141,7 +141,7 @@ export function AdminDashboard() {
           initMarks[s.id] = SEMESTER_1_COURSES.map((c) => ({
             code: c.code,
             name: c.name,
-            marks: 80,
+            marks: 0,
             max_marks: c.max_marks,
           }));
         }
@@ -262,21 +262,60 @@ export function AdminDashboard() {
     });
   }
 
+  function handleFillPrototypeMarks() {
+    const samplePresets: number[][] = [
+      [88, 84, 79, 94, 85, 90],
+      [85, 84, 82, 90, 80, 88],
+      [72, 70, 75, 80, 74, 78],
+    ];
+    setMarksByStudent((prev) => {
+      const next: Record<string, SubjectEntry[]> = { ...prev };
+      students.forEach((stu, sIdx) => {
+        const preset = samplePresets[sIdx % samplePresets.length];
+        next[stu.id] = SEMESTER_1_COURSES.map((c, cIdx) => ({
+          code: c.code,
+          name: c.name,
+          marks: preset[cIdx] ?? 75,
+          max_marks: c.max_marks,
+        }));
+      });
+      return next;
+    });
+    notify({
+      type: 'info',
+      title: 'Sample Marks Loaded',
+      message: 'Populated standard demonstration scores for prototype evaluation.',
+    });
+  }
+
   async function handlePublishBatch(e?: React.FormEvent) {
     if (e) e.preventDefault();
     setError(null);
+
+    // Validate that marks are explicitly provided and bounded for each student
+    for (const s of students) {
+      const subs = marksByStudent[s.id];
+      if (!subs || subs.length === 0) {
+        setError(new Error(`Please enter marks for student ${s.roll_number} before publishing.`));
+        return;
+      }
+      for (const sub of subs) {
+        if (typeof sub.marks !== 'number' || isNaN(sub.marks) || sub.marks < 0 || sub.marks > sub.max_marks) {
+          setError(
+            new Error(
+              `Invalid mark (${sub.marks}) for ${s.roll_number} in course ${sub.code}. Must be between 0 and ${sub.max_marks}.`
+            )
+          );
+          return;
+        }
+      }
+    }
+
     setBusy(true);
     try {
       const entries = students.map((s) => ({
         student_id: s.id,
-        subjects:
-          marksByStudent[s.id] ||
-          SEMESTER_1_COURSES.map((c) => ({
-            code: c.code,
-            name: c.name,
-            marks: 80,
-            max_marks: 100,
-          })),
+        subjects: marksByStudent[s.id],
       }));
 
       const res = await apiFetch<{
@@ -353,7 +392,7 @@ export function AdminDashboard() {
         [newStudent.id]: SEMESTER_1_COURSES.map((c) => ({
           code: c.code,
           name: c.name,
-          marks: 80,
+          marks: 0,
           max_marks: c.max_marks,
         })),
       }));
@@ -616,6 +655,19 @@ export function AdminDashboard() {
               </FormField>
             </div>
 
+            <div className="flex items-center justify-between pb-1">
+              <span className="text-xs font-semibold text-stone-700">
+                Course Marks by Enrolled Student ({students.length} students):
+              </span>
+              <button
+                type="button"
+                onClick={handleFillPrototypeMarks}
+                className="text-[11px] font-semibold text-[#7F1D1D] hover:underline cursor-pointer"
+              >
+                + Auto-fill Sample Marks (Testing)
+              </button>
+            </div>
+
             <div className="max-h-72 overflow-y-auto border border-stone-200 rounded divide-y divide-stone-200">
               {students.map((stu) => {
                 const stuSubjects =
@@ -623,8 +675,8 @@ export function AdminDashboard() {
                   SEMESTER_1_COURSES.map((c) => ({
                     code: c.code,
                     name: c.name,
-                    marks: 80,
-                    max_marks: 100,
+                    marks: 0,
+                    max_marks: c.max_marks,
                   }));
                 return (
                   <div key={stu.id} className="p-3 bg-stone-50/60">

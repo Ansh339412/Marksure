@@ -233,7 +233,15 @@ export function verifyResultRecord(input: VerifyResultInput): VerifyResultOutput
 
   const tamperedFields = fieldDiffs.filter((f) => f.is_tampered);
   const versionMismatch = currentResult.current_version !== latestVersion.version;
-  const directDbTamperingDetected = tamperedFields.length > 0 || versionMismatch;
+  const studentIdMismatch =
+    Boolean(latestVersion.snapshot_json?.student_id) &&
+    currentResult.student_id !== latestVersion.snapshot_json.student_id;
+  const academicTermMismatch =
+    Boolean(latestVersion.snapshot_json?.academic_term) &&
+    currentResult.academic_term !== latestVersion.snapshot_json.academic_term;
+
+  const directDbTamperingDetected =
+    tamperedFields.length > 0 || versionMismatch || studentIdMismatch || academicTermMismatch;
 
   // Step 4: Verify two-approver signatures on any finalized corrections
   const verifiedCorrections: VerifiedCorrectionRecord[] = corrections.map((c) => {
@@ -286,7 +294,12 @@ export function verifyResultRecord(input: VerifyResultInput): VerifyResultOutput
   } else if (directDbTamperingDetected) {
     status = 'TAMPERED';
     const changedCodes = tamperedFields.map((f) => f.subject_code).join(', ');
-    summaryMessage = `ALERT: Direct database modification detected! The live database record does not match the signed snapshot (${changedCodes || 'version mismatch'}), while the original institutional Ed25519 signature remains valid.`;
+    const reasons: string[] = [];
+    if (changedCodes) reasons.push(`subjects: ${changedCodes}`);
+    if (versionMismatch) reasons.push('version mismatch');
+    if (studentIdMismatch) reasons.push('student_id mismatch');
+    if (academicTermMismatch) reasons.push('academic_term mismatch');
+    summaryMessage = `ALERT: Direct database modification detected! The live database record does not match the signed snapshot (${reasons.join('; ') || 'record modified'}), while the original institutional Ed25519 signature remains valid.`;
   } else if (!allCorrectionsValid) {
     status = 'TAMPERED';
     summaryMessage =
