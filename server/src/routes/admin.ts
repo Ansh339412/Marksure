@@ -375,65 +375,80 @@ adminRouter.post(
 
       // 6. Persist results, result_versions (immutable v1 snapshot), and merkle_proofs
       const publishedResultsSummary = [];
+      const insertedResultIds: string[] = [];
+      const insertedVersionIds: string[] = [];
 
-      for (let idx = 0; idx < preparedItems.length; idx++) {
-        const item = preparedItems[idx];
-        const proofSteps = merkleTree.proofs[idx];
+      try {
+        for (let idx = 0; idx < preparedItems.length; idx++) {
+          const item = preparedItems[idx];
+          const proofSteps = merkleTree.proofs[idx];
 
-        const { error: resInsertErr } = await supabase.from('results').insert({
-          id: item.resultId,
-          student_id: item.studentId,
-          academic_term: cleanTerm,
-          subjects_json: item.normalizedSnapshot.subjects,
-          current_version: 1,
-          latest_batch_id: batchId,
-          status: 'published',
-        });
+          const { error: resInsertErr } = await supabase.from('results').insert({
+            id: item.resultId,
+            student_id: item.studentId,
+            academic_term: cleanTerm,
+            subjects_json: item.normalizedSnapshot.subjects,
+            current_version: 1,
+            latest_batch_id: batchId,
+            status: 'published',
+          });
 
-        if (resInsertErr) {
-          throw new Error(`Failed to insert result for ${item.rollNumber}: ${resInsertErr.message}`);
+          if (resInsertErr) {
+            throw new Error(`Failed to insert result for ${item.rollNumber}: ${resInsertErr.message}`);
+          }
+          insertedResultIds.push(item.resultId);
+
+          const versionId = crypto.randomUUID();
+          const { error: verInsertErr } = await supabase.from('result_versions').insert({
+            id: versionId,
+            result_id: item.resultId,
+            version: 1,
+            batch_id: batchId,
+            snapshot_json: item.normalizedSnapshot,
+            leaf_hash: item.leafHash,
+          });
+
+          if (verInsertErr) {
+            throw new Error(
+              `Failed to insert immutable snapshot for ${item.rollNumber}: ${verInsertErr.message}`
+            );
+          }
+          insertedVersionIds.push(versionId);
+
+          const { error: proofInsertErr } = await supabase.from('merkle_proofs').insert({
+            result_version_id: versionId,
+            batch_id: batchId,
+            leaf_index: idx,
+            leaf_hash: item.leafHash,
+            proof_json: proofSteps,
+          });
+
+          if (proofInsertErr) {
+            throw new Error(
+              `Failed to insert Merkle proof for ${item.rollNumber}: ${proofInsertErr.message}`
+            );
+          }
+
+          publishedResultsSummary.push({
+            result_id: item.resultId,
+            student_id: item.studentId,
+            roll_number: item.rollNumber,
+            version: 1,
+            leaf_hash: item.leafHash,
+            leaf_index: idx,
+            proof_length: proofSteps.length,
+            qr_verify_path: `/verify/${item.resultId}?v=1&leaf=${item.leafHash}`,
+          });
         }
-
-        const versionId = crypto.randomUUID();
-        const { error: verInsertErr } = await supabase.from('result_versions').insert({
-          id: versionId,
-          result_id: item.resultId,
-          version: 1,
-          batch_id: batchId,
-          snapshot_json: item.normalizedSnapshot,
-          leaf_hash: item.leafHash,
-        });
-
-        if (verInsertErr) {
-          throw new Error(
-            `Failed to insert immutable snapshot for ${item.rollNumber}: ${verInsertErr.message}`
-          );
+      } catch (err) {
+        // Roll back partial batch inserts to guarantee transactional consistency
+        await supabase.from('merkle_proofs').delete().eq('batch_id', batchId);
+        await supabase.from('result_versions').delete().eq('batch_id', batchId);
+        if (insertedResultIds.length > 0) {
+          await supabase.from('results').delete().in('id', insertedResultIds);
         }
-
-        const { error: proofInsertErr } = await supabase.from('merkle_proofs').insert({
-          result_version_id: versionId,
-          batch_id: batchId,
-          leaf_index: idx,
-          leaf_hash: item.leafHash,
-          proof_json: proofSteps,
-        });
-
-        if (proofInsertErr) {
-          throw new Error(
-            `Failed to insert Merkle proof for ${item.rollNumber}: ${proofInsertErr.message}`
-          );
-        }
-
-        publishedResultsSummary.push({
-          result_id: item.resultId,
-          student_id: item.studentId,
-          roll_number: item.rollNumber,
-          version: 1,
-          leaf_hash: item.leafHash,
-          leaf_index: idx,
-          proof_length: proofSteps.length,
-          qr_verify_path: `/verify/${item.resultId}?v=1&leaf=${item.leafHash}`,
-        });
+        await supabase.from('publication_batches').delete().eq('id', batchId);
+        throw err;
       }
 
       // 7. Append BATCH_PUBLISHED event to hash-chained ledger
@@ -506,13 +521,14 @@ adminRouter.get(
 
       if (error) throw new Error(error.message);
 
-      const verifiedResults = [];
-      for (const row of resultRows || []) {
-        const report = await verifySingleResultFromDb(row.id, {
-          includeFullName: true,
-        });
-        verifiedResults.push(report);
-      }
+      // Section 5 Performance Improvement: Parallelize verification queries across results
+      const verifiedResults = await Promise.all(
+        (resultRows || []).map((row) =>
+          verifySingleResultFromDb(row.id, {
+            includeFullName: true,
+          })
+        )
+      );
 
       res.json({ results: verifiedResults });
     } catch (err) {
@@ -523,13 +539,22 @@ adminRouter.get(
   }
 );
 
-// Reset published results & ledger for clean hackathon demo rehearsals
+// Reset published results & ledger for clean development/testing rehearsals (Strictly disabled in production)
 adminRouter.post(
   '/demo/reset',
   requireAuth,
   requireRole('admin'),
   async (req, res) => {
     try {
+      if (env.isProduction || !env.allowDevIdentities) {
+        res.status(403).json({
+          error: 'Demo reset operations are strictly forbidden in production environments.',
+          code: 'FORBIDDEN_IN_PRODUCTION',
+          status: 403,
+        });
+        return;
+      }
+
       const mode = req.body?.mode || 'reseed';
       if (mode === 'empty') {
         const supabase = getSupabaseAdmin();

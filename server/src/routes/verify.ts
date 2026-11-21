@@ -32,7 +32,6 @@ verifyRouter.get('/', async (_req, res) => {
         return {
           result_id: r.id,
           roll_number: stu?.roll_number || 'UNKNOWN',
-          full_name: stu?.full_name || 'Student',
           masked_name: maskStudentName(stu?.full_name || 'Student'),
           department: stu?.department || 'Computer Science and Engineering',
           academic_term: r.academic_term,
@@ -85,10 +84,11 @@ verifyRouter.get('/:resultId', async (req, res) => {
         ? Number(req.query.v)
         : undefined;
 
+    // Section 3.E Privacy Requirement: Never leak full student names on the public verification endpoint
     const report = await verifySingleResultFromDb(resultId.trim(), {
       qrLeafHash,
       qrVersion,
-      includeFullName: true,
+      includeFullName: false,
     });
 
     res.json(report);

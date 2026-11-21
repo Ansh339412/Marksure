@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { getSupabaseAdmin } from '../config/supabase.js';
-import { isSupabaseConfigured } from '../config/env.js';
+import { env, isSupabaseConfigured } from '../config/env.js';
 import { getPublicKeyFromPrivateHex } from '../crypto/signatures.js';
 import {
   parseCookies,
@@ -121,11 +121,14 @@ export async function requireAuth(
     if (cookieToken) {
       const sessionPayload = verifySignedSessionCookieValue(cookieToken);
       if (sessionPayload) {
-        const matchedDev = findDemoProfileByEmailOrId(sessionPayload.email);
-        if (matchedDev) {
-          req.user = matchedDev;
-          next();
-          return;
+        // Only permit demo identities if explicitly enabled in development
+        if (env.allowDevIdentities) {
+          const matchedDev = findDemoProfileByEmailOrId(sessionPayload.email);
+          if (matchedDev) {
+            req.user = matchedDev;
+            next();
+            return;
+          }
         }
 
         if (isSupabaseConfigured()) {
@@ -165,17 +168,18 @@ export async function requireAuth(
     // Check signed session token if sent in Bearer header
     const bearerSession = verifySignedSessionCookieValue(token);
     if (bearerSession) {
-      const matched = findDemoProfileByEmailOrId(bearerSession.email);
-      if (matched) {
-        req.user = matched;
-        next();
-        return;
+      if (env.allowDevIdentities) {
+        const matched = findDemoProfileByEmailOrId(bearerSession.email);
+        if (matched) {
+          req.user = matched;
+          next();
+          return;
+        }
       }
     }
 
-    // Check configured institutional identity tokens
-    const workspacesEnabled = process.env.ENABLE_ROLE_WORKSPACES !== 'false';
-    if (token in DEMO_PROFILES && workspacesEnabled) {
+    // Check configured institutional identity tokens (strictly disabled in production)
+    if (env.allowDevIdentities && token in DEMO_PROFILES) {
       req.user = DEMO_PROFILES[token];
       next();
       return;

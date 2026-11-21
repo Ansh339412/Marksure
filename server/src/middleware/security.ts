@@ -5,10 +5,10 @@ import { env } from '../config/env.js';
 export const SESSION_COOKIE_NAME = 'marksure_sid';
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours short-lived session
 
-// Derive an HMAC signing secret from the server's private key configuration
+// Derive an HMAC signing secret from the dedicated session secret configuration
 const SESSION_HMAC_SECRET = crypto
   .createHash('sha256')
-  .update(`MARKSURE_SESSION_KEY_V1:${env.institutionPrivateKeyHex}`)
+  .update(`MARKSURE_SESSION_KEY_V2:${env.sessionSecret}`)
   .digest();
 
 export interface SessionPayload {
@@ -143,6 +143,54 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
     'Content-Security-Policy',
     "default-src 'self'; frame-ancestors 'none'; base-uri 'self'"
   );
+  next();
+}
+
+/**
+ * Validates Origin/Referer on state-changing requests to defend against cross-site request forgery.
+ */
+export function csrfOriginCheck(req: Request, res: Response, next: NextFunction): void {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const origin = req.headers.origin;
+  if (origin) {
+    if (env.isProduction && !env.allowedOrigins.includes(origin)) {
+      res.status(403).json({
+        error: 'Forbidden: Origin not permitted by institutional CSRF policy.',
+        code: 'CSRF_BLOCKED_ORIGIN',
+        status: 403,
+      });
+      return;
+    }
+    next();
+    return;
+  }
+
+  const referer = req.headers.referer;
+  if (referer && env.isProduction) {
+    try {
+      const refOrigin = new URL(referer).origin;
+      if (!env.allowedOrigins.includes(refOrigin)) {
+        res.status(403).json({
+          error: 'Forbidden: Referer not permitted by institutional CSRF policy.',
+          code: 'CSRF_BLOCKED_REFERER',
+          status: 403,
+        });
+        return;
+      }
+    } catch {
+      res.status(403).json({
+        error: 'Forbidden: Malformed referer header.',
+        code: 'CSRF_MALFORMED_REFERER',
+        status: 403,
+      });
+      return;
+    }
+  }
+
   next();
 }
 

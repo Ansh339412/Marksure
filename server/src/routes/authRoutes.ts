@@ -46,11 +46,10 @@ const DEV_ONLY_SIGNING_KEYS: Record<string, string> = {
 
 // Public configuration endpoint for the login page (does NOT expose secrets or private keys)
 authRouter.get('/config', (_req, res) => {
-  const isDevWorkspace = process.env.ENABLE_ROLE_WORKSPACES !== 'false';
   res.json({
     institution_id: env.institutionId,
-    dev_workspace_enabled: isDevWorkspace,
-    identities: isDevWorkspace
+    dev_workspace_enabled: env.allowDevIdentities,
+    identities: env.allowDevIdentities
       ? Object.entries(DEMO_PROFILES).map(([key, profile]) => ({
           identity_key: key,
           email: profile.email,
@@ -144,7 +143,9 @@ authRouter.post('/login', loginRateLimiter, async (req, res) => {
       .eq('id', data.user.id)
       .maybeSingle();
 
-    const matchedDev = findDemoProfileByEmailOrId(normalizedEmail);
+    const matchedDev = env.allowDevIdentities
+      ? findDemoProfileByEmailOrId(normalizedEmail)
+      : undefined;
     const resolvedUser: AuthenticatedUser = matchedDev || {
       id: data.user.id,
       email: normalizedEmail,
@@ -178,12 +179,12 @@ authRouter.post('/login', loginRateLimiter, async (req, res) => {
   }
 });
 
-// Protected Role Workspace Session Initializer
+// Protected Role Workspace Session Initializer (Strictly disabled in production)
 authRouter.post('/dev-session', loginRateLimiter, (req, res) => {
-  if (process.env.ENABLE_ROLE_WORKSPACES === 'false') {
+  if (!env.allowDevIdentities) {
     res.status(403).json({
-      error: 'Role workspace identity selection is disabled.',
-      code: 'FORBIDDEN',
+      error: 'Development identity workspaces are strictly disabled in this environment.',
+      code: 'DEV_IDENTITIES_DISABLED',
       status: 403,
     });
     return;
@@ -213,16 +214,16 @@ authRouter.post('/dev-session', loginRateLimiter, (req, res) => {
   });
 });
 
-// Protected Signing Key Retrieval (Scoped strictly to the authenticated approver)
+// Protected Signing Key Retrieval (Scoped strictly to development and authenticated approver)
 authRouter.get(
   '/dev-signing-key',
   requireAuth,
   requireRole('approver'),
   (req, res) => {
-    if (process.env.ENABLE_ROLE_WORKSPACES === 'false') {
+    if (!env.allowDevIdentities) {
       res.status(403).json({
-        error: 'Key retrieval is disabled.',
-        code: 'FORBIDDEN',
+        error: 'Development signing keys are strictly disabled in this environment.',
+        code: 'DEV_KEYS_DISABLED',
         status: 403,
       });
       return;
