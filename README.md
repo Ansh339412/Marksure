@@ -16,6 +16,7 @@ MarkSure is an academic results publishing and verification platform built to ma
 
 ---
 
+
 ## Why MarkSure?
 
 A conventional results database can show what a record contains today, but that alone does not prove what was originally published. If a privileged user changes a mark directly in the database, the application needs an independent reference to detect the difference.
