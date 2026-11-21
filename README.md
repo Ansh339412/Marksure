@@ -66,30 +66,7 @@ The application communicates the result of verification using explicit states, i
 The exact status depends on the verification logic and response returned by the backend.
 
 ## Architecture
-
-```text
-┌──────────────────────────────────────────────────────────┐
-│                    React + TypeScript                    │
-│  Home · Login · Admin · Student · Corrections · Verify   │
-└────────────────────────────┬─────────────────────────────┘
-                             │ HTTP / JSON
-┌────────────────────────────▼─────────────────────────────┐
-│                 Node.js + Express API                    │
-│                                                          │
-│  Authentication & roles     Result management            │
-│  Publication workflow       Correction approvals         │
-│  QR verification            Audit operations              │
-└───────────────┬─────────────────────────┬────────────────┘
-                │                         │
-┌───────────────▼──────────────┐  ┌───────▼────────────────┐
-│       Supabase              │  │   Cryptographic layer  │
-│       PostgreSQL            │  │                        │
-│       Auth / records        │  │   SHA-256              │
-│       Versions / history    │  │   Merkle tree          │
-│                             │  │   Ed25519 signatures   │
-└─────────────────────────────┘  └────────────────────────┘
-```
-
+[![Architecture diagram of ansh339412/marksure](https://gitdiagram.com/ansh339412/marksure/diagram.png)](https://gitdiagram.com/ansh339412/marksure?utm_source=readme&utm_medium=picture)
 ## Technology
 
 | Area | Technologies |
