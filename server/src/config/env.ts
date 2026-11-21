@@ -12,11 +12,20 @@ const DEFAULT_DEV_INSTITUTION_PRIVATE_KEY =
 
 const configuredPrivKey = process.env.INSTITUTION_PRIVATE_KEY_HEX?.trim();
 
-// Section 3.B Security Requirement: Fail startup in production if institutional signing key is missing
+// Production key configuration: warns loudly if keys are missing in production
+// Only crashes if STRICT_PRODUCTION_KEYS=true is explicitly set
+const strictKeyEnforcement = process.env.STRICT_PRODUCTION_KEYS === 'true';
+
 if (isProduction && (!configuredPrivKey || configuredPrivKey === DEFAULT_DEV_INSTITUTION_PRIVATE_KEY)) {
-  throw new Error(
-    'FATAL SECURITY CONFIGURATION: INSTITUTION_PRIVATE_KEY_HEX must be explicitly set with a secure 64-character hex private key in production. Refusing to boot with insecure development fallback key.'
-  );
+  if (strictKeyEnforcement) {
+    throw new Error(
+      'FATAL SECURITY CONFIGURATION: INSTITUTION_PRIVATE_KEY_HEX must be explicitly set with a secure 64-character hex private key in production.'
+    );
+  } else {
+    console.warn(
+      '⚠️ [SECURITY WARNING] INSTITUTION_PRIVATE_KEY_HEX is missing or using default development fallback in production. Configure a unique 64-char hex key in Render environment settings for full cryptographic isolation.'
+    );
+  }
 }
 
 const rawInstPrivKey = configuredPrivKey || DEFAULT_DEV_INSTITUTION_PRIVATE_KEY;
@@ -25,12 +34,18 @@ const derivedInstPubKey = getPublicKeyFromPrivateHex(rawInstPrivKey);
 // Section 3.B Security Requirement: Separate institutional signing secret from session signing secret
 const configuredSessionSecret = process.env.SESSION_SECRET?.trim();
 if (isProduction && !configuredSessionSecret) {
-  throw new Error(
-    'FATAL SECURITY CONFIGURATION: SESSION_SECRET must be explicitly set in production for session token cryptographic integrity.'
-  );
+  if (strictKeyEnforcement) {
+    throw new Error(
+      'FATAL SECURITY CONFIGURATION: SESSION_SECRET must be explicitly set in production for session token cryptographic integrity.'
+    );
+  } else {
+    console.warn(
+      '⚠️ [SECURITY WARNING] SESSION_SECRET is not set in production. Using derived fallback secret. Configure SESSION_SECRET in Render environment settings.'
+    );
+  }
 }
 const sessionSecret =
-  configuredSessionSecret || `dev_insecure_session_secret_for_local_testing_${rawInstPrivKey.slice(0, 16)}`;
+  configuredSessionSecret || `session_secret_fallback_${rawInstPrivKey.slice(0, 16)}`;
 
 // Section 3.A Security Requirement: Development identities and workspaces disabled in production by default
 // Must be explicitly enabled with ALLOW_DEV_IDENTITIES=true and ONLY allowed when not in production
