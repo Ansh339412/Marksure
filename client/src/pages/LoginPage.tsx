@@ -84,6 +84,50 @@ const ROLE_WORKSPACE_METADATA: Record<
   },
 };
 
+const DEFAULT_HACKATHON_IDENTITIES: ConfiguredIdentity[] = [
+  {
+    identity_key: 'demo-admin',
+    email: 'admin@marksure.edu',
+    full_name: 'Mr. Arjun Malhotra',
+    designation: 'Assistant Registrar (Examinations)',
+    department: 'Division of Examination Operations',
+    role: 'admin',
+    role_code: 'ADMIN',
+    public_key_hex: null,
+  },
+  {
+    identity_key: 'demo-approver-1',
+    email: 'dean.exams@marksure.edu',
+    full_name: 'Dr. Meera Kapoor',
+    designation: 'Deputy Controller of Examinations',
+    department: 'Academic Scrutiny & Review Board',
+    role: 'approver',
+    role_code: 'APPROVER_1',
+    public_key_hex: 'd04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737',
+  },
+  {
+    identity_key: 'demo-approver-2',
+    email: 'controller@marksure.edu',
+    full_name: 'Dr. Karan Bedi',
+    designation: 'Controller of Examinations',
+    department: 'Office of the Controller of Examinations',
+    role: 'approver',
+    role_code: 'APPROVER_2',
+    public_key_hex: 'a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0',
+  },
+  {
+    identity_key: 'demo-student-1',
+    email: 'harnoor.singh@student.marksure.edu',
+    full_name: 'Harnoor Singh',
+    designation: 'B.Tech Computer Science and Engineering',
+    department: 'School of Computer Science and Engineering',
+    registration_id: 'REG-2026-CSE-001',
+    role: 'student',
+    role_code: 'STUDENT',
+    public_key_hex: null,
+  },
+];
+
 export function LoginPage() {
   const { loginWithCredentials, loginWithDevIdentity } = useAuth();
   const { notify } = useToast();
@@ -96,8 +140,8 @@ export function LoginPage() {
   const [error, setError] = useState<unknown>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  const [devWorkspaceEnabled, setDevWorkspaceEnabled] = useState(false);
-  const [devIdentities, setDevIdentities] = useState<ConfiguredIdentity[]>([]);
+  const [devWorkspaceEnabled, setDevWorkspaceEnabled] = useState(true);
+  const [devIdentities, setDevIdentities] = useState<ConfiguredIdentity[]>(DEFAULT_HACKATHON_IDENTITIES);
   const [showDevIdentities, setShowDevIdentities] = useState(true);
 
   useEffect(() => {
@@ -106,10 +150,14 @@ export function LoginPage() {
       identities: ConfiguredIdentity[];
     }>('/api/auth/config')
       .then((cfg) => {
-        setDevWorkspaceEnabled(Boolean(cfg.dev_workspace_enabled));
-        setDevIdentities(cfg.identities || []);
+        if (cfg && Array.isArray(cfg.identities) && cfg.identities.length > 0) {
+          setDevIdentities(cfg.identities);
+          setDevWorkspaceEnabled(Boolean(cfg.dev_workspace_enabled));
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        // Fallback to DEFAULT_HACKATHON_IDENTITIES if offline/cold starting
+      });
   }, []);
 
   async function handleCredentialSignIn(e: React.FormEvent) {
@@ -259,6 +307,54 @@ export function LoginPage() {
                   className="w-full px-3.5 py-2.5 text-[15px] rounded-md border border-stone-300 bg-white focus:outline-none focus:border-zinc-900"
                 />
               </FormField>
+
+              <div className="pt-0.5 pb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500 block mb-1.5">
+                  Hackathon 1-Click Credentials:
+                </span>
+                <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('admin@marksure.edu');
+                      setPassword('Admin@12345');
+                    }}
+                    className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded text-stone-800 text-left font-semibold cursor-pointer truncate"
+                  >
+                    👑 Admin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('dean.exams@marksure.edu');
+                      setPassword('Approver1@12345');
+                    }}
+                    className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded text-stone-800 text-left font-semibold cursor-pointer truncate"
+                  >
+                    ✍️ Approver 1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('controller@marksure.edu');
+                      setPassword('Approver2@12345');
+                    }}
+                    className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded text-stone-800 text-left font-semibold cursor-pointer truncate"
+                  >
+                    🛡️ Approver 2
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('harnoor.singh@student.marksure.edu');
+                      setPassword('Student@12345');
+                    }}
+                    className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded text-stone-800 text-left font-semibold cursor-pointer truncate"
+                  >
+                    🎓 Student
+                  </button>
+                </div>
+              </div>
 
               <Button
                 type="submit"
